@@ -2224,6 +2224,8 @@ const SETTINGS_DB_VERSION = 1;
 
 function _openSettingsDB() {
   return new Promise((resolve, reject) => {
+    let done = false;
+    const settle = (fn, v) => { if (!done) { done = true; fn(v); } };
     const req = indexedDB.open(SETTINGS_DB_NAME, SETTINGS_DB_VERSION);
     req.onupgradeneeded = e => {
       const d = e.target.result;
@@ -2231,8 +2233,12 @@ function _openSettingsDB() {
         d.createObjectStore('settings', { keyPath: 'key' });
       }
     };
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror = e => reject(e.target.error);
+    req.onsuccess = e => settle(resolve, e.target.result);
+    req.onerror   = e => settle(reject, e.target.error);
+    // 他のタブが同じDBを掴んでいるとブロックされ、ハンドラが無いと永久に待つ。
+    // 初期化処理の先頭で呼ばれるため、ここで固まるとアプリ全体が起動しなくなる。
+    req.onblocked = () => settle(reject, new Error('設定DBがブロックされています'));
+    setTimeout(() => settle(reject, new Error('設定DBのオープンがタイムアウトしました')), 4000);
   });
 }
 
@@ -2348,17 +2354,29 @@ async function addUser() {
 
 async function switchUser(name) {
   setCurrentUser(name);
-  db = await openDB();
+  const label = document.getElementById('current-user-label');
+  if (label) label.textContent = name;
+
+  // DB接続より先にUIを確定させる。
+  // 接続待ちの間モーダルが閉じないと「タップしても反応しない」ように見えるため。
+  db = null;
+  _skipNextCloseTopLayer = true;
+  _closeModalInner('user-modal');
+  history.back(); // pushStateエントリを消費
+
   loadCategoryDefFromStorage();
   loadLargeDefFromStorage();
   updateStoreDefStatus();
   updateIncomeCatStatus();
-  _skipNextCloseTopLayer = true;
-  _closeModalInner('user-modal');
-  history.back(); // pushStateエントリを消費
-  // 表示をリセット
-  resetUpload();
-  loadHistory();
+  try { resetUpload(); } catch (_) {}
+
+  try {
+    db = await openDBOnce();
+  } catch (e) {
+    console.warn('切り替え後のDB接続に失敗（以降の操作時に再接続します）', e);
+  }
+
+  try { await loadHistory(); } catch (_) {}
   if (document.getElementById('tab-stats').classList.contains('active')) loadStats();
   showStatus('success', `${name} に切り替えました`);
 }
@@ -2674,40 +2692,64 @@ function openDB() {
     req.onerror   = e => { if (!done) { done = true; reject(e.target.error); } };
     // 削除処理などでブロックされたまま永久に待たないようにする
     req.onblocked = () => { if (!done) { done = true; reject(new Error('DBがブロックされています（他のタブで開いている可能性）')); } };
-    setTimeout(() => { if (!done) { done = true; reject(new Error('DBのオープンがタイムアウトしました')); } }, 5000);
+    // 端末が遅いと5秒では足りず誤ってタイムアウトすることがあったため余裕を持たせる
+    setTimeout(() => { if (!done) { done = true; reject(new Error('DBのオープンがタイムアウトしました')); } }, 20000);
   });
 }
 
-function dbAdd(storeName, data) {
+// 同時に何度も openDB が走らないよう、進行中の接続処理を共有する
+let _openDBInFlight = null;
+function openDBOnce() {
+  if (!_openDBInFlight) {
+    _openDBInFlight = openDB().finally(() => { _openDBInFlight = null; });
+  }
+  return _openDBInFlight;
+}
+
+// DB接続が失われていたら開き直す。
+// 起動直後のタイミングやバックグラウンド復帰で db が null になることがあり、
+// そのまま db.transaction を呼ぶと「Cannot read properties of undefined」になるため、
+// すべてのDB操作の入口で接続を保証する。
+async function ensureDB() {
+  if (db) return db;
+  db = await openDBOnce();
+  return db;
+}
+
+async function dbAdd(storeName, data) {
+  const d = await ensureDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
+    const tx = d.transaction(storeName, 'readwrite');
     const req = tx.objectStore(storeName).add(data);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-function dbPut(storeName, data) {
+async function dbPut(storeName, data) {
+  const d = await ensureDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
+    const tx = d.transaction(storeName, 'readwrite');
     const req = tx.objectStore(storeName).put(data);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-function dbDelete(storeName, id) {
+async function dbDelete(storeName, id) {
+  const d = await ensureDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
+    const tx = d.transaction(storeName, 'readwrite');
     const req = tx.objectStore(storeName).delete(id);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
 }
 
-function dbGetAll(storeName) {
+async function dbGetAll(storeName) {
+  const d = await ensureDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
+    const tx = d.transaction(storeName, 'readonly');
     const req = tx.objectStore(storeName).getAll();
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -4446,11 +4488,11 @@ async function importData(file) {
     }
 
     // 現在のユーザーのDBを確実に開く
-    db = await openDB();
+    const idb = await ensureDB();
 
     // 既存データを全削除（上書きモード）
     await new Promise((resolve, reject) => {
-      const tx = db.transaction('receipts', 'readwrite');
+      const tx = idb.transaction('receipts', 'readwrite');
       const req = tx.objectStore('receipts').clear();
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
@@ -8032,21 +8074,37 @@ document.addEventListener('keydown', e => {
 
 // ===== 初期化 =====
 async function initApp(isResume) {
-  // ── IDB → localStorage 復元（最優先・他の処理より先に行う）──
+  // localStorageの値で先にヘッダー表示を確定させる。
+  // このあとのIDB復元が遅れても「未選択」のまま固まらないようにするため。
+  {
+    const preUser = getCurrentUser();
+    const label = document.getElementById('current-user-label');
+    if (preUser && label) label.textContent = preUser;
+  }
+
+  // ── IDB → localStorage 復元 ──
   // localStorageはリロード・スキーム変更・プライベートブラウズで消えることがある。
   // IDBは永続的なため、起動のたびにIDB値でlocalStorageを上書き同期する。
+  // ただしここで待ち続けると初期化全体が止まるので、必ず時間で打ち切る。
   try {
-    const [idbUser, idbUsers, idbTheme, idbKey] = await Promise.all([
+    const restore = Promise.all([
       _loadSettingIDB(CURRENT_USER_KEY),
       _loadSettingIDB(USERS_KEY),
       _loadSettingIDB('app_theme'),
       _loadSettingIDB('gemini_api_key'),
     ]);
-    // IDBに値があれば常にlocalStorageへ同期（localStorageが古くても上書き）
-    if (idbUser)  localStorage.setItem(CURRENT_USER_KEY, idbUser);
-    if (idbUsers) localStorage.setItem(USERS_KEY, idbUsers);
-    if (idbTheme) localStorage.setItem('app_theme', idbTheme);
-    if (idbKey)   localStorage.setItem('gemini_api_key', idbKey);
+    const timeout = new Promise(res => setTimeout(() => res(null), 5000));
+    const restored = await Promise.race([restore, timeout]);
+    if (restored) {
+      const [idbUser, idbUsers, idbTheme, idbKey] = restored;
+      // IDBに値があれば常にlocalStorageへ同期（localStorageが古くても上書き）
+      if (idbUser)  localStorage.setItem(CURRENT_USER_KEY, idbUser);
+      if (idbUsers) localStorage.setItem(USERS_KEY, idbUsers);
+      if (idbTheme) localStorage.setItem('app_theme', idbTheme);
+      if (idbKey)   localStorage.setItem('gemini_api_key', idbKey);
+    } else {
+      console.warn('IDB設定の復元がタイムアウトしました（localStorageの値で続行）');
+    }
   } catch(e) {
     console.warn('IDB設定の復元に失敗:', e);
   }
@@ -8075,13 +8133,17 @@ async function initApp(isResume) {
 
   if (currentUser) {
     document.getElementById('current-user-label').textContent = currentUser;
-    // DB接続が切れていたら再接続
-    try {
-      db = await openDB();
-    } catch(e) {
-      console.warn('DB再接続失敗、リトライします', e);
-      await new Promise(r => setTimeout(r, 500));
-      db = await openDB();
+    // DB接続が切れていたら再接続（最大3回）。
+    // ここで例外を投げると initApp 全体が中断し、db=null のまま操作不能になるため、
+    // 失敗しても続行する。以降のDB操作は ensureDB() が自動で開き直す。
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        db = await openDBOnce();
+        break;
+      } catch (e) {
+        console.warn(`DB接続失敗（${attempt}/3）`, e);
+        if (attempt < 3) await new Promise(r => setTimeout(r, 600));
+      }
     }
     // 復帰時は表示中のタブを再描画して真っ暗を防ぐ
     if (isResume) {
@@ -8091,6 +8153,14 @@ async function initApp(isResume) {
   } else {
     // ユーザー未選択ならユーザーモーダルを表示
     if (!isResume) setTimeout(openUserModalWithHistory, 400);
+  }
+
+  // ── URLトリガーによるエクスポート ──
+  // 「…/#export」で開かれたら書き出す。自動判断ではなく、MacroDroid等からの
+  // 明示的な命令を受ける入口。エクスポートボタンを押すのと同じ動作。
+  if (!isResume && location.hash === '#export') {
+    try { history.replaceState(history.state, '', location.pathname + location.search); } catch (_) {}
+    setTimeout(() => { exportData(); }, 800); // DB接続の完了を待つ
   }
 }
 
