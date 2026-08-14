@@ -2303,6 +2303,7 @@ async function openUserModal() {
   // 共有はHTTPS配信時のみ使えるため、使える環境でだけボタンを出す
   const shareBtn = document.getElementById('share-export-btn');
   if (shareBtn) shareBtn.style.display = canShareFiles() ? 'block' : 'none';
+  _shareFileCache = null;
 
   if (!db) {
     try {
@@ -2314,6 +2315,7 @@ async function openUserModal() {
     }
   }
   updateExportStatus();
+  prepareShareFile(); // タップ時に待たずに共有できるよう先に作っておく
 }
 
 function renderUserList() {
@@ -3523,6 +3525,10 @@ function _closeLargeEditorInner() {
   document.getElementById('large-editor-overlay').classList.remove('open');
   document.body.style.overflow = '';
   syncCategoryDefOrderFromLargeDef();
+  // 追加タブの大カテゴリ選択（グリッド／ドロップダウン）を最新のlargeDef/categoryDefで再構築。
+  // これを呼ばないと、大中エディタで編集した内容がタブ切替（switchTab('upload')）まで反映されない。
+  if (typeof buildManualLargeSelect === 'function') buildManualLargeSelect();
+  if (typeof rebuildManualCatDropdown === 'function') rebuildManualCatDropdown();
 }
 
 // 大中エディタが開いていれば再描画（中小側の変更後に呼ぶ）
@@ -4420,24 +4426,47 @@ function canShareFiles() {
   } catch (e) { return false; }
 }
 
-async function shareExportData() {
+// 共有用ファイルを事前に用意しておく。
+// navigator.share() は「タップ直後の一時的なユーザー操作権限」がある間しか呼べず、
+// クリック後にDB読み込みを await すると権限が失効して Permission denied になる。
+// そのためモーダルを開いた時点でファイルを作っておき、タップ時は共有だけ行う。
+let _shareFileCache = null;
+
+async function prepareShareFile() {
+  if (!canShareFiles()) { _shareFileCache = null; return; }
+  try {
+    const { json, filename, count } = await buildExportFile();
+    _shareFileCache = {
+      file: new File([json], filename, { type: 'application/json' }),
+      count
+    };
+  } catch (e) {
+    console.warn('共有ファイルの準備に失敗', e);
+    _shareFileCache = null;
+  }
+}
+
+// awaitを挟まず同期的に navigator.share() を呼ぶ（asyncにしないこと）
+function shareExportData() {
   if (!canShareFiles()) {
     setExportStatus('❌ この環境では共有が使えません（HTTPS配信が必要です）', 'var(--danger)');
     return;
   }
-  try {
-    const { json, filename, count } = await buildExportFile();
-    const file = new File([json], filename, { type: 'application/json' });
-    await navigator.share({
-      files: [file],
-      title: '家計簿データ',
-      text: `${count}件の記録`
-    });
-    setExportStatus(`✅ ${count}件を共有しました`, 'var(--accent)');
-  } catch(e) {
-    if (e && e.name === 'AbortError') return; // ユーザーがキャンセルしただけ
-    setExportStatus(`❌ 共有失敗：${e.message}`, 'var(--danger)');
+  if (!_shareFileCache) {
+    setExportStatus('⏳ 準備中です。もう一度タップしてください', 'var(--text-dim)');
+    prepareShareFile();
+    return;
   }
+  const { file, count } = _shareFileCache;
+  navigator.share({ files: [file], title: '家計簿データ', text: `${count}件の記録` })
+    .then(() => {
+      setExportStatus(`✅ ${count}件を共有しました`, 'var(--accent)');
+      prepareShareFile(); // 次回用に作り直す
+    })
+    .catch(e => {
+      if (e && e.name === 'AbortError') return; // ユーザーがキャンセルしただけ
+      setExportStatus(`❌ 共有失敗：${e.message}（📤エクスポートをお使いください）`, 'var(--danger)');
+    });
 }
 
 // ===== インポート =====
