@@ -107,19 +107,29 @@ tbody tr:last-child td{border-bottom:none}
 td.state{font-weight:700;white-space:nowrap}
 .tbl-scroll{overflow-x:auto}
 
-/* 操作早見表：スクロール枠は画面端まで広げ、
-   中のカードに左右マージンを付けることで、
-   スクロール前は左に、スクロールし切ると右に余白（ページ背景）が出る */
+/* 操作早見表：スクロール枠の広げ幅は「本文カラムの外側20px」まで。
+   狭い画面では従来どおり画面端まで広がり、
+   広い画面（PC）では本文カラムと同じ基準に揃うので、中のカードを中央に置ける */
 .ops-scroller{
   overflow-x:auto;
-  margin-left:calc(50% - 50vw);
-  margin-right:calc(50% - 50vw);
+  margin-left:max(-20px, calc(50% - 50vw));
+  margin-right:max(-20px, calc(50% - 50vw));
   padding-left:20px;
   padding-right:20px;
   display:flex;
 }
 .ops-card{
   width:max-content;
+  /* flexboxのauto marginは「正の余白」しか吸収しない仕様のため、
+     収まるときは中央、はみ出すときは自動的に左端起点（＝スクロールの左が切れない） */
+  margin-left:auto;
+  margin-right:auto;
+}
+/* カード内の注記は1行が長く、max-content幅のカードを不要に押し広げて
+   表が左寄りに見える原因になる。幅計算には参加させず、表示だけ親幅いっぱいにする */
+.ops-card > .note{
+  width:0;
+  min-width:100%;
 }
 /* 横スクロールしても右端に左端と同じ余白を残す */
 .tbl-scroll table th:last-child,
