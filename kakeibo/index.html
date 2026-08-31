@@ -4479,9 +4479,9 @@ async function updateDataSafetyBanner() {
   }
   if (backupStale) {
     const detail = at === null
-      ? 'まだ一度もバックアップしていません。'
-      : `前回のバックアップから${days}日${unsaved ? `／未保存${unsaved}件` : ''}経過しています。`;
-    msgs.push(`<b>📤 バックアップをおすすめします</b><br>${detail}`
+      ? 'まだ一度もエクスポートしていません。'
+      : `前回のエクスポートから${days}日${unsaved ? `／未保存${unsaved}件` : ''}経過しています。`;
+    msgs.push(`<b>📤 エクスポートして保存しておくことをおすすめします</b><br>${detail}`
       + '<span style="opacity:.85;">「閲覧データの削除」を実行すると永続化していてもデータは消えます。</span>');
   }
 
@@ -4493,7 +4493,7 @@ async function updateDataSafetyBanner() {
   el.style.color = 'var(--text)';
   el.innerHTML = msgs.join('<div style="height:8px;"></div>')
     + '<div style="margin-top:8px;">'
-    + '<button class="btn-sm" onclick="openUserModalWithHistory()">📤 バックアップする</button>'
+    + '<button class="btn-sm" onclick="openUserModalWithHistory()">📤 エクスポートして保存しておく</button>'
     + '<button class="btn-sm" style="margin-left:8px;" onclick="dismissDataSafetyBanner()">閉じる</button>'
     + '</div>';
   el.style.display = 'block';
@@ -4550,9 +4550,9 @@ async function renderEnvCheck() {
   if (bk.at) {
     const pad2 = x => String(x).padStart(2, '0');
     const s = `${bk.at.getFullYear()}/${pad2(bk.at.getMonth()+1)}/${pad2(bk.at.getDate())} ${pad2(bk.at.getHours())}:${pad2(bk.at.getMinutes())}`;
-    rows.push(`${mark(bk.days < BACKUP_DAYS_LIMIT)} 最終バックアップ：${s}（${bk.days}日前・${bk.count}件）`);
+    rows.push(`${mark(bk.days < BACKUP_DAYS_LIMIT)} 最終エクスポート：${s}（${bk.days}日前・${bk.count}件）`);
   } else {
-    rows.push(`${mark(false)} 最終バックアップ：まだ実施していません`);
+    rows.push(`${mark(false)} 最終エクスポート：まだ実施していません`);
   }
 
   if (isDataSafetyBannerSnoozed()) {
@@ -9716,6 +9716,22 @@ function _updateManualCatImportHint() {
   hint.style.display = hasProperCats ? 'none' : 'block';
 }
 
+// 隠し select に値をセットする。
+// select は options に無い値を代入しても無視される（value が '' のままになる）ため、
+// 該当 option が無ければ作ってから代入する。収入カテゴリはここを通す。
+function setManualMiddleValue(name) {
+  const sel = document.getElementById('manual-item-middle');
+  if (!sel) return;
+  if (!name) { sel.value = ''; return; }
+  if (![...sel.options].some(o => o.value === name)) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  }
+  sel.value = name;
+}
+
 function addManualItem() {
   const name = document.getElementById('manual-item-name').value.trim();
   const price = parseInt(document.getElementById('manual-item-price').value) || 0;
@@ -9859,6 +9875,18 @@ function setManualEntryType(type) {
 
   if (!isExpense) {
     // ── 収入モード：ドロップダウンを収入カテゴリ名で上書き、中カテゴリ非表示 ──
+    // 隠し select の中身も収入カテゴリに入れ替える。
+    // これを忘れると選択値が select に入らず、保存時に「その他」へ落ちる。
+    const midSelInit = document.getElementById('manual-item-middle');
+    if (midSelInit) {
+      midSelInit.innerHTML = '';
+      INCOME_NAMES.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n;
+        opt.textContent = n;
+        midSelInit.appendChild(opt);
+      });
+    }
     if (catList) {
       catList.innerHTML = '';
       INCOME_NAMES.forEach((name, i) => {
@@ -9871,8 +9899,7 @@ function setManualEntryType(type) {
           catList.style.display = 'none';
           document.getElementById('manual-cat-arrow').textContent = '▼';
           // hidden select に反映
-          const midSel = document.getElementById('manual-item-middle');
-          if (midSel) midSel.value = name;
+          setManualMiddleValue(name);
         };
         catList.appendChild(div);
       });
@@ -9880,8 +9907,7 @@ function setManualEntryType(type) {
     if (catLabel) catLabel.textContent = INCOME_NAMES[0];
     if (midWrap)  midWrap.style.display = 'none';
     // hidden select 初期値
-    const midSel = document.getElementById('manual-item-middle');
-    if (midSel) midSel.value = INCOME_NAMES[0];
+    setManualMiddleValue(INCOME_NAMES[0]);
   } else {
     // ── 支出モード：通常の大カテゴリドロップダウンに戻す ──
     rebuildManualCatDropdown();
