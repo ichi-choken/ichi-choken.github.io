@@ -1612,18 +1612,14 @@
         </div>
       </div>
 
-      <!-- メモ -->
+      <!-- 商品名 -->
       <div style="margin-bottom:12px;">
-        <div class="modal-label" style="margin-bottom:4px;">メモ</div>
-        <input type="text" id="manual-item-name" placeholder="" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
+        <div class="modal-label" style="margin-bottom:4px;">商品名</div>
+        <input type="text" id="manual-item-name" placeholder="例：牛乳" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
       </div>
 
       <!-- 支出 -->
       <div id="manual-large-row" style="margin-bottom:12px;">
-        <div style="margin-bottom:4px;">
-          <div class="modal-label">支出</div>
-        </div>
-
         <!-- カテゴリ ドロップダウン -->
         <div id="manual-cat-dropdown" style="position:relative;margin-bottom:8px;">
           <div id="manual-cat-selected" onclick="toggleManualCatDropdown()"
@@ -1678,6 +1674,9 @@
           <input type="number" id="manual-item-price" placeholder="" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
           <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">円</span>
         </div>
+        <!-- 複数品目を積むための追加ボタン。押さずに保存しても入力中の1件は保存される。 -->
+        <button id="manual-add-item-btn" onclick="addManualItemByUser()"
+          style="width:100%;margin-top:8px;background:none;border:1px dashed var(--border);color:var(--text-dim);font-size:13px;padding:9px;border-radius:6px;cursor:pointer;font-family:inherit;">＋ 商品を追加してもう1件入力</button>
       </div>
 
       <!-- 店舗名 -->
@@ -1712,7 +1711,15 @@
         </div>
       </div>
 
-      <ul class="item-list" id="manual-items-list" style="margin-bottom:12px; min-height:40px;"></ul>
+      <!-- 追加済みの品目一覧（1件も無いときは非表示） -->
+      <div id="manual-items-wrap" style="display:none;margin-bottom:12px;">
+        <div class="modal-label" style="margin-bottom:4px;">追加済みの商品</div>
+        <ul class="item-list" id="manual-items-list" style="margin-bottom:6px;"></ul>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text-dim);">
+          <span>この明細の合計</span>
+          <span id="manual-total-visible" style="font-family:'Space Mono',monospace;color:var(--text);font-weight:700;">¥0</span>
+        </div>
+      </div>
 
       <!-- 中カテゴリ（非表示・addManualItemで参照のみ） -->
       <select id="manual-item-middle" style="display:none;"></select>
@@ -9732,10 +9739,14 @@ function setManualMiddleValue(name) {
   sel.value = name;
 }
 
+// 入力欄の内容を品目リストに積む。
+// 商品名も金額も空なら何もしない（保存時の自動追加で空行が混ざるのを防ぐ）。
+// 戻り値: 追加できたら true
 function addManualItem() {
   const name = document.getElementById('manual-item-name').value.trim();
-  const price = parseInt(document.getElementById('manual-item-price').value) || 0;
-
+  const priceRaw = document.getElementById('manual-item-price').value.trim();
+  const price = parseInt(priceRaw) || 0;
+  if (!name && !priceRaw) return false;
 
   // 中カテゴリ：ドロップダウンで選ばれた値を優先して使う
   let middle = 'その他';
@@ -9758,6 +9769,16 @@ function addManualItem() {
   document.getElementById('manual-item-name').value = '';
   document.getElementById('manual-item-price').value = '';
   renderManualItems();
+  return true;
+}
+
+// 「＋ 商品を追加」ボタン用。追加後は商品名にフォーカスを戻す。
+function addManualItemByUser() {
+  if (!addManualItem()) {
+    showManualStatus('error', '商品名か金額を入力してください');
+    return;
+  }
+  hideStatus();
   document.getElementById('manual-item-name').focus();
 }
 
@@ -9768,11 +9789,16 @@ function deleteManualItem(idx) {
 
 function renderManualItems() {
   const ul = document.getElementById('manual-items-list');
+  const wrap = document.getElementById('manual-items-wrap');
   ul.innerHTML = '';
   if (manualItems.length === 0) {
     document.getElementById('manual-total').textContent = '¥0';
+    const tv0 = document.getElementById('manual-total-visible');
+    if (tv0) tv0.textContent = '¥0';
+    if (wrap) wrap.style.display = 'none';
     return;
   }
+  if (wrap) wrap.style.display = 'block';
   manualItems.forEach((item, idx) => {
     const li = document.createElement('li');
     li.className = 'manual-item-row';
@@ -9788,12 +9814,18 @@ function renderManualItems() {
   });
   const total = manualItems.reduce((s, i) => s + (i.price || 0), 0);
   document.getElementById('manual-total').textContent = '¥' + total.toLocaleString();
+  const tv = document.getElementById('manual-total-visible');
+  if (tv) tv.textContent = '¥' + total.toLocaleString();
 }
 
 async function saveManualReceipt() {
   if (!getCurrentUser()) { openUserModalWithHistory(); return; }
-  // プラスボタンがないので保存時に自動追加
+  // 入力欄に書きかけの1件があれば保存時に取り込む（空なら何も足さない）
   addManualItem();
+  if (manualItems.length === 0) {
+    showManualStatus('error', '商品名か金額を入力してください');
+    return;
+  }
   let store = document.getElementById('manual-store').value.trim();
 
   if (_manualEntryType === 'income') {
@@ -10047,13 +10079,20 @@ function showManualStatus(type, msg) {
   // 成功メッセージは商品リストエリアに表示
   const ul = document.getElementById('manual-items-list');
   if (!ul) { showStatus(type, msg); setTimeout(hideStatus, 3000); return; }
+  const wrap = document.getElementById('manual-items-wrap');
   ul.innerHTML = '';
   const li = document.createElement('li');
   li.style.cssText = 'font-size:13px; color:var(--accent); padding:8px 0; text-align:center;';
   li.textContent = msg;
   ul.appendChild(li);
+  if (wrap) wrap.style.display = 'block'; // 一覧が空でもメッセージを見せる
   clearTimeout(ul._hideTimer);
-  ul._hideTimer = setTimeout(() => { if (manualItems.length === 0) ul.innerHTML = ''; }, 3000);
+  ul._hideTimer = setTimeout(() => {
+    if (manualItems.length === 0) {
+      ul.innerHTML = '';
+      if (wrap) wrap.style.display = 'none';
+    }
+  }, 3000);
 }
 </script>
 
