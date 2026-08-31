@@ -16,6 +16,7 @@ GitHub Pages で公開している個人用 Web アプリ置き場です．い�
 - ダーク／ライト／自動のテーマ切り替え
 
 Gemini API キーは設定画面から登録し，端末内にのみ保存されます．
+APIは以下URLから取得: https://aistudio.google.com/app/api-keys
 
 ### [cio-handyfan](https://ichi-choken.github.io/cio-handyfan/) — CIO HandyFan 取扱いメモ
 充電スタンド付きハンディファン「CIO HandyFan」の操作方法・使い方を，付属説明書より引きやすい形でまとめた Web マニュアルです．
