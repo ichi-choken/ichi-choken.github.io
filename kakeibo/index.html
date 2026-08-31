@@ -1677,6 +1677,18 @@
         <!-- 複数品目を積むための追加ボタン。押さずに保存しても入力中の1件は保存される。 -->
         <button id="manual-add-item-btn" onclick="addManualItemByUser()"
           style="width:100%;margin-top:8px;background:none;border:1px dashed var(--border);color:var(--text-dim);font-size:13px;padding:9px;border-radius:6px;cursor:pointer;font-family:inherit;">＋ 商品を追加してもう1件入力</button>
+        <!-- ボタン直下のメッセージ欄。写真側のステータス欄は手入力中は見えないためここに出す -->
+        <div id="manual-add-item-msg" style="display:none;font-size:12px;margin-top:6px;"></div>
+
+        <!-- 追加済みの品目一覧（1件も無いときは非表示）。押した結果がすぐ見えるようボタンの直下に置く -->
+        <div id="manual-items-wrap" style="display:none;margin-top:10px;">
+          <div class="modal-label" style="margin-bottom:4px;">追加済みの商品</div>
+          <ul class="item-list" id="manual-items-list" style="margin-bottom:6px;"></ul>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text-dim);">
+            <span>この明細の合計</span>
+            <span id="manual-total-visible" style="font-family:'Space Mono',monospace;color:var(--text);font-weight:700;">¥0</span>
+          </div>
+        </div>
       </div>
 
       <!-- 店舗名 -->
@@ -1708,16 +1720,6 @@
           <input type="text" id="manual-store-text" placeholder="店舗名を入力"
             oninput="document.getElementById('manual-store').value=this.value||'手入力'"
             style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
-        </div>
-      </div>
-
-      <!-- 追加済みの品目一覧（1件も無いときは非表示） -->
-      <div id="manual-items-wrap" style="display:none;margin-bottom:12px;">
-        <div class="modal-label" style="margin-bottom:4px;">追加済みの商品</div>
-        <ul class="item-list" id="manual-items-list" style="margin-bottom:6px;"></ul>
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text-dim);">
-          <span>この明細の合計</span>
-          <span id="manual-total-visible" style="font-family:'Space Mono',monospace;color:var(--text);font-weight:700;">¥0</span>
         </div>
       </div>
 
@@ -9775,11 +9777,23 @@ function addManualItem() {
 // 「＋ 商品を追加」ボタン用。追加後は商品名にフォーカスを戻す。
 function addManualItemByUser() {
   if (!addManualItem()) {
-    showManualStatus('error', '商品名か金額を入力してください');
+    setManualAddItemMsg('商品名か金額を入力してから押してください', 'var(--danger)');
     return;
   }
-  hideStatus();
+  setManualAddItemMsg('追加しました。続けて次の商品を入力できます', 'var(--accent)');
   document.getElementById('manual-item-name').focus();
+}
+
+// 追加ボタン直下のメッセージ表示（3秒で消える）
+let _manualAddMsgTimer = null;
+function setManualAddItemMsg(text, color) {
+  const el = document.getElementById('manual-add-item-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = color;
+  el.style.display = 'block';
+  clearTimeout(_manualAddMsgTimer);
+  _manualAddMsgTimer = setTimeout(() => { el.style.display = 'none'; }, 3000);
 }
 
 function deleteManualItem(idx) {
