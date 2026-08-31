@@ -148,6 +148,47 @@
     transform: translateX(-50%) translateY(0);
   }
 
+  /* 自動保存カウントダウン。タップで停止できるよう pointer-events を有効にする */
+  #autosave-toast {
+    position: fixed;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    width: calc(100% - 32px);
+    max-width: 420px;
+    box-sizing: border-box;
+    background: #1f2933;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.18);
+    font-size: 13px;
+    line-height: 1.5;
+    font-family: 'Noto Sans JP', sans-serif;
+    padding: 12px 16px;
+    border-radius: 12px;
+    text-align: center;
+    z-index: 10000;
+    opacity: 0;
+    pointer-events: none;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  #autosave-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
+  #autosave-toast .autosave-sub {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    opacity: 0.75;
+  }
+  #autosave-toast .autosave-count {
+    font-weight: 700;
+    font-size: 15px;
+  }
+
   body {
     font-family: 'Noto Sans JP', sans-serif;
     background: var(--bg);
@@ -1367,6 +1408,9 @@
 
 <!-- カメラ起動時ユーザー名トースト -->
 <div id="user-toast"></div>
+
+<!-- 自動保存カウントダウン（タップで停止） -->
+<div id="autosave-toast" onclick="stopAutoSaveByUser()"></div>
 
 <!-- ヘッダー -->
 <div class="header">
@@ -4380,6 +4424,8 @@ const BACKUP_AT_KEY    = 'last_backup_at';
 const BACKUP_COUNT_KEY = 'last_backup_count';
 const BACKUP_DAYS_LIMIT  = 14; // これ以上バックアップしていなければ催促
 const BACKUP_COUNT_LIMIT = 20; // 前回バックアップからこれ以上増えたら催促
+const BANNER_SNOOZE_KEY  = 'data_safety_banner_snoozed_at';
+const BANNER_SNOOZE_DAYS = 7;  // 「閉じる」を押してから再表示しない日数
 
 // エクスポート／共有が成功したタイミングで呼ぶ。
 function markBackupDone(count) {
@@ -4407,6 +4453,9 @@ function getBackupInfo() {
 async function updateDataSafetyBanner() {
   const el = document.getElementById('data-safety-banner');
   if (!el) return;
+
+  // 「閉じる」を押してから BANNER_SNOOZE_DAYS 日間は出さない
+  if (isDataSafetyBannerSnoozed()) { el.style.display = 'none'; return; }
 
   let persisted = null;
   try {
@@ -4450,9 +4499,31 @@ async function updateDataSafetyBanner() {
   el.style.display = 'block';
 }
 
+// 「閉じる」を押した時刻を記録し、1週間は再表示しない。
 function dismissDataSafetyBanner() {
+  try { localStorage.setItem(BANNER_SNOOZE_KEY, new Date().toISOString()); } catch (e) {}
   const el = document.getElementById('data-safety-banner');
   if (el) el.style.display = 'none';
+}
+
+// 非表示期間を手動で解除する（設定画面から）
+function resetDataSafetyBannerSnooze() {
+  try { localStorage.removeItem(BANNER_SNOOZE_KEY); } catch (e) {}
+  renderEnvCheck();
+  updateDataSafetyBanner();
+}
+
+function isDataSafetyBannerSnoozed() {
+  try {
+    const raw = localStorage.getItem(BANNER_SNOOZE_KEY);
+    if (!raw) return false;
+    const at = new Date(raw);
+    if (isNaN(at)) return false;
+    const elapsed = Date.now() - at.getTime();
+    // 端末の時計が巻き戻された場合（負の値）は記録を捨てて表示に戻す
+    if (elapsed < 0) { localStorage.removeItem(BANNER_SNOOZE_KEY); return false; }
+    return elapsed < BANNER_SNOOZE_DAYS * 86400000;
+  } catch (e) { return false; }
 }
 
 // 設定画面に出す環境チェック。HTTPS移行がうまくいったか一目で分かるようにする。
@@ -4482,6 +4553,12 @@ async function renderEnvCheck() {
     rows.push(`${mark(bk.days < BACKUP_DAYS_LIMIT)} 最終バックアップ：${s}（${bk.days}日前・${bk.count}件）`);
   } else {
     rows.push(`${mark(false)} 最終バックアップ：まだ実施していません`);
+  }
+
+  if (isDataSafetyBannerSnoozed()) {
+    rows.push('<span style="color:var(--text-dim);">警告バナーは非表示中（閉じるを押してから'
+      + `${BANNER_SNOOZE_DAYS}日間）`
+      + ' <a href="#" onclick="resetDataSafetyBannerSnooze(); return false;" style="color:var(--accent);">今すぐ再表示</a></span>');
   }
 
   try {
@@ -4928,6 +5005,7 @@ ${prompt}`
       throw Object.assign(new Error('商品が検出されませんでした。レシートが正しく映っているか確認してください。'), { _custom: true });
     }
 
+    _autoSaveStopped = false; // 新しい写真なので自動保存を復活させる
     renderResult(parsedData);
     showStatus('success', '解析完了！内容を確認して保存してください。');
     // 解析完了音（Web Audio API）
@@ -5032,11 +5110,90 @@ function renderResult(data) {
   });
 
   document.getElementById('result-preview').style.display = 'block';
+  // 表示・編集のたびにカウントダウンを仕切り直す
+  scheduleAutoSave();
+}
+
+// ===== 自動保存（解析結果を10秒間さわらなければ保存） =====
+const AUTOSAVE_SECONDS = 10;
+let _autoSaveTick = null;   // setInterval のID
+let _autoSaveLeft = 0;      // 残り秒
+let _autoSaveStopped = false; // ユーザーがトーストをタップして止めたか（次の写真までON）
+
+function _autoSaveToastEl() { return document.getElementById('autosave-toast'); }
+
+function showAutoSaveToast(html) {
+  const el = _autoSaveToastEl();
+  if (!el) return;
+  el.innerHTML = html;
+  el.classList.add('show');
+}
+
+function hideAutoSaveToast() {
+  const el = _autoSaveToastEl();
+  if (el) el.classList.remove('show');
+}
+
+function renderAutoSaveToast() {
+  showAutoSaveToast(
+    `<span class="autosave-count">${_autoSaveLeft}秒後</span>に自動保存します`
+    + '<span class="autosave-sub">内容を編集するとカウントし直します／タップで自動保存を止める</span>'
+  );
+}
+
+// カウントダウンを開始（再呼び出しで最初からやり直し）。
+// renderResult から呼ばれるので、プレビューを編集するたびにリセットされる。
+function scheduleAutoSave() {
+  clearAutoSaveTimer();
+  if (_autoSaveStopped) return;
+  if (!parsedData) return;
+  // プレビューが表示されていないときは何もしない
+  const pv = document.getElementById('result-preview');
+  if (!pv || pv.style.display === 'none') return;
+
+  _autoSaveLeft = AUTOSAVE_SECONDS;
+  renderAutoSaveToast();
+  _autoSaveTick = setInterval(() => {
+    _autoSaveLeft--;
+    if (_autoSaveLeft <= 0) {
+      clearAutoSaveTimer();
+      hideAutoSaveToast();
+      saveReceipt();
+    } else {
+      renderAutoSaveToast();
+    }
+  }, 1000);
+}
+
+function clearAutoSaveTimer() {
+  if (_autoSaveTick) { clearInterval(_autoSaveTick); _autoSaveTick = null; }
+}
+
+// 一時停止（編集モーダルを開いている間など）。停止フラグは立てない。
+function pauseAutoSave() {
+  clearAutoSaveTimer();
+  hideAutoSaveToast();
+}
+
+// トーストをタップしたとき。この写真については以降カウントしない。
+function stopAutoSaveByUser() {
+  clearAutoSaveTimer();
+  _autoSaveStopped = true;
+  showAutoSaveToast('自動保存を止めました<span class="autosave-sub">「💾 保存する」で手動保存してください</span>');
+  setTimeout(hideAutoSaveToast, 2500);
+}
+
+// 新しい写真を解析するときに停止フラグを戻す
+function resetAutoSaveState() {
+  clearAutoSaveTimer();
+  hideAutoSaveToast();
+  _autoSaveStopped = false;
 }
 
 // ===== 保存 =====
 async function saveReceipt() {
   if (!parsedData) return;
+  pauseAutoSave();
   try {
     // store_brand を店カテゴリに自動登録し、idを取得
     const storeBrandId = autoRegisterStoreBrand(parsedData.store_brand);
@@ -5070,10 +5227,12 @@ function openPreviewReceiptEdit() {
   const modal = document.getElementById('receipt-edit-modal');
   modal.dataset.mode = 'preview';
   modal.classList.add('open');
+  pauseAutoSave(); // 編集中はカウントを止める
 }
 
 // 商品を編集（index指定）または新規追加（引数なし）
 function openPreviewItemEdit(idx) {
+  pauseAutoSave(); // 編集中はカウントを止める
   previewEditItemIndex = (idx !== undefined) ? idx : null;
   const modal = document.getElementById('item-edit-modal');
   modal.dataset.mode = 'preview';
@@ -5131,6 +5290,7 @@ function sendNotification(title, body) {
 }
 
 function resetUpload() {
+  resetAutoSaveState();
   selectedFile = null;
   selectedFiles = [];
   parsedData = null;
@@ -7861,8 +8021,13 @@ function _pushNavState(type) {
 // これらをpopstateハンドラとEscから呼ぶ
 function _closeModalInner(id) {
   const el = document.getElementById(id);
+  const wasPreview = el.dataset.mode === 'preview';
   el.classList.remove('open');
   if (el.dataset.mode) delete el.dataset.mode;
+  // プレビュー編集を閉じたらカウントダウンを再開する
+  if (wasPreview && (id === 'receipt-edit-modal' || id === 'item-edit-modal')) {
+    scheduleAutoSave();
+  }
 }
 function _closeSettingsInner() {
   document.getElementById('settings-modal').classList.remove('open');
