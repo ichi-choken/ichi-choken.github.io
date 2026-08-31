@@ -1380,6 +1380,9 @@
   <button class="settings-btn" onclick="openSettingsWithHistory()">⚙ 設定</button>
 </div>
 
+<!-- データ保全バナー（永続化未許可 / バックアップ未実施の警告） -->
+<div id="data-safety-banner" style="display:none; margin:8px 12px 0; padding:10px 12px; border-radius:8px; font-size:12px; line-height:1.6;"></div>
+
 <!-- ユーザーモーダル -->
 <div class="modal-overlay" id="user-modal">
   <div class="modal">
@@ -4372,6 +4375,86 @@ async function requestPersistentStorage() {
   }
 }
 
+// ===== データ保全（永続化状態＋バックアップ催促） =====
+const BACKUP_AT_KEY    = 'last_backup_at';
+const BACKUP_COUNT_KEY = 'last_backup_count';
+const BACKUP_DAYS_LIMIT  = 14; // これ以上バックアップしていなければ催促
+const BACKUP_COUNT_LIMIT = 20; // 前回バックアップからこれ以上増えたら催促
+
+// エクスポート／共有が成功したタイミングで呼ぶ。
+function markBackupDone(count) {
+  try {
+    localStorage.setItem(BACKUP_AT_KEY, new Date().toISOString());
+    localStorage.setItem(BACKUP_COUNT_KEY, String(count));
+  } catch (e) {}
+  updateDataSafetyBanner();
+}
+
+function getBackupInfo() {
+  let at = null, count = null;
+  try {
+    const raw = localStorage.getItem(BACKUP_AT_KEY);
+    if (raw) { const d = new Date(raw); if (!isNaN(d)) at = d; }
+    const c = parseInt(localStorage.getItem(BACKUP_COUNT_KEY), 10);
+    if (!isNaN(c)) count = c;
+  } catch (e) {}
+  const days = at ? Math.floor((Date.now() - at.getTime()) / 86400000) : null;
+  return { at, count, days };
+}
+
+// 「永続化されているか」と「バックアップが古くないか」を確認してバナーを出す。
+// どちらも問題なければ非表示にする。
+async function updateDataSafetyBanner() {
+  const el = document.getElementById('data-safety-banner');
+  if (!el) return;
+
+  let persisted = null;
+  try {
+    if (navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted();
+  } catch (e) {}
+
+  let total = null;
+  try { total = (await dbGetAll('receipts')).length; } catch (e) {}
+
+  const { at, count, days } = getBackupInfo();
+  const unsaved = (total !== null && count !== null) ? Math.max(0, total - count) : null;
+  const backupStale = (total !== null && total > 0) && (
+    at === null || days >= BACKUP_DAYS_LIMIT || (unsaved !== null && unsaved >= BACKUP_COUNT_LIMIT)
+  );
+
+  const msgs = [];
+  if (persisted !== true) {
+    msgs.push('<b>⚠ データが自動削除される可能性があります</b><br>'
+      + 'ブラウザの永続化が未許可です（空き容量が減ると保存データがまとめて削除されることがあります）。'
+      + 'このサイトをホーム画面に追加する／ブックマークして何度か開くと許可されやすくなります。');
+  }
+  if (backupStale) {
+    const detail = at === null
+      ? 'まだ一度もバックアップしていません。'
+      : `前回のバックアップから${days}日${unsaved ? `／未保存${unsaved}件` : ''}経過しています。`;
+    msgs.push(`<b>📤 バックアップをおすすめします</b><br>${detail}`
+      + '<span style="opacity:.85;">「閲覧データの削除」を実行すると永続化していてもデータは消えます。</span>');
+  }
+
+  if (msgs.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+  const danger = persisted !== true;
+  el.style.background = danger ? 'rgba(255,90,90,.12)' : 'rgba(255,190,60,.12)';
+  el.style.border = `1px solid ${danger ? 'var(--danger)' : 'var(--text-dim)'}`;
+  el.style.color = 'var(--text)';
+  el.innerHTML = msgs.join('<div style="height:8px;"></div>')
+    + '<div style="margin-top:8px;">'
+    + '<button class="btn-sm" onclick="openUserModalWithHistory()">📤 バックアップする</button>'
+    + '<button class="btn-sm" style="margin-left:8px;" onclick="dismissDataSafetyBanner()">閉じる</button>'
+    + '</div>';
+  el.style.display = 'block';
+}
+
+function dismissDataSafetyBanner() {
+  const el = document.getElementById('data-safety-banner');
+  if (el) el.style.display = 'none';
+}
+
 // 設定画面に出す環境チェック。HTTPS移行がうまくいったか一目で分かるようにする。
 async function renderEnvCheck() {
   const el = document.getElementById('env-check');
@@ -4391,6 +4474,15 @@ async function renderEnvCheck() {
     if (navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted();
   } catch (e) {}
   rows.push(`${mark(persisted === true)} データの永続化（自動削除の防止）`);
+
+  const bk = getBackupInfo();
+  if (bk.at) {
+    const pad2 = x => String(x).padStart(2, '0');
+    const s = `${bk.at.getFullYear()}/${pad2(bk.at.getMonth()+1)}/${pad2(bk.at.getDate())} ${pad2(bk.at.getHours())}:${pad2(bk.at.getMinutes())}`;
+    rows.push(`${mark(bk.days < BACKUP_DAYS_LIMIT)} 最終バックアップ：${s}（${bk.days}日前・${bk.count}件）`);
+  } else {
+    rows.push(`${mark(false)} 最終バックアップ：まだ実施していません`);
+  }
 
   try {
     if (navigator.storage && navigator.storage.estimate) {
@@ -4414,6 +4506,7 @@ async function exportData() {
     a.click();
     URL.revokeObjectURL(url);
     setExportStatus(`✅ ${count}件をエクスポートしました`, 'var(--accent)');
+    markBackupDone(count);
   } catch(e) {
     setExportStatus(`❌ エクスポート失敗：${e.message}`, 'var(--danger)');
   }
@@ -4464,6 +4557,7 @@ function shareExportData() {
   navigator.share({ files: [file], title: '家計簿データ', text: `${count}件の記録` })
     .then(() => {
       setExportStatus(`✅ ${count}件を共有しました`, 'var(--accent)');
+      markBackupDone(count);
       prepareShareFile(); // 次回用に作り直す
     })
     .catch(e => {
@@ -4599,6 +4693,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'history') {
+    updateDataSafetyBanner();
     if (_historyView === 'cal') loadCalendar();
     else loadHistory();
   }
@@ -5268,19 +5363,10 @@ async function loadCalendar() {
   } catch(e) { _calRecords = []; }
 
   if (_calYear === 0) {
+    // 常に現在の月から開く（分割払いなど未来日付のレシートに引っ張られないため）
     const now = new Date();
     _calYear = now.getFullYear();
     _calMonth = now.getMonth();
-    // データがあれば最新月に合わせる
-    if (_calRecords.length > 0) {
-      const dates = _calRecords.map(r => r.date).filter(Boolean).sort();
-      const latest = dates[dates.length - 1];
-      if (latest) {
-        const d = new Date(latest);
-        _calYear = d.getFullYear();
-        _calMonth = d.getMonth();
-      }
-    }
   }
   renderCalendar();
 }
@@ -8162,8 +8248,9 @@ async function initApp(isResume) {
   // テーマ復元
   _applyThemeClass();
 
-  // 永続ストレージの申請（初回のみ・失敗しても続行）
-  if (!isResume) { requestPersistentStorage(); }
+  // 永続ストレージの申請（失敗しても続行）。
+  // Chromeは利用実績が増えると後から許可されるため、拒否された場合に備えて起動のたびに申請する。
+  requestPersistentStorage().then(() => updateDataSafetyBanner());
 
   if (currentUser) {
     document.getElementById('current-user-label').textContent = currentUser;
