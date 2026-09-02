@@ -12,9 +12,7 @@ GitHub Pages で公開している個人用 Web アプリ置き場です．い�
 
 ### 💨 [CIO HandyFan 取扱いメモ](https://ichi-choken.github.io/cio-handyfan/)
 
-充電スタンド付きハンディファン「CIO HandyFan」の操作方法を，付属説明書より引きやすい形でまとめた Web マニュアル．基本操作，充電まわりの扱い方，困ったときの確認ポイントを収録．
-
-→ 詳細は [cio-handyfan/README.md](./cio-handyfan/README.md)
+充電スタンド付きハンディファン「CIO HandyFan」の操作方法を，付属説明書より引きやすい形でまとめた Web マニュアル(参照:[cio-handyfan/README.md](./cio-handyfan/README.md))
 
 ## 作者
 
