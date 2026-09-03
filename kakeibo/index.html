@@ -214,6 +214,17 @@
     letter-spacing: 1px;
     color: var(--accent);
   }
+  /* ファイルの更新日時（ユーザー名と設定ボタンの間） */
+  .build-label {
+    flex-shrink: 0;
+    margin: 0 8px;
+    font-size: 10px;
+    line-height: 1.25;
+    color: var(--text-dim);
+    text-align: right;
+    white-space: pre-line;
+  }
+
   .settings-btn {
     background: none;
     border: 1px solid var(--border);
@@ -1465,6 +1476,7 @@
       <span id="current-user-label">未選択</span>
     </button>
   </div>
+  <span id="build-label" class="build-label"></span>
   <button class="settings-btn" onclick="openSettingsWithHistory()">⚙ 設定</button>
 </div>
 
@@ -4545,7 +4557,20 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-03 22:30';
+const APP_BUILD = '2026-09-03 22:34';
+
+// '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
+function formatBuildLabel(build) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(build || '');
+  if (!m) return build || '';
+  const [, y, mo, d, hh, mi] = m;
+  return `${Number(y)}年${Number(mo)}月${Number(d)}日\n${hh}:${mi}更新`;
+}
+
+function renderBuildLabel() {
+  const el = document.getElementById('build-label');
+  if (el) el.textContent = formatBuildLabel(APP_BUILD);
+}
 
 function _extractBuild(text) {
   const m = text.match(/APP_BUILD\s*=\s*'([^']+)'/);
@@ -8949,6 +8974,8 @@ async function initApp(isResume) {
   document.getElementById('history-list-body').style.display = isList ? 'block' : 'none';
   document.getElementById('history-cal-body').style.display  = isList ? 'none' : 'block';
 })();
+
+renderBuildLabel();
 
 (async () => {
   await initApp(false);
