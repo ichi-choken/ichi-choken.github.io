@@ -5263,6 +5263,30 @@ function startAutoSaveCountdown() {
   }, 1000);
 }
 
+// ===== 保存完了音 =====
+// AudioContext は作りすぎるとブラウザの上限に当たるため、1つを使い回す。
+// 自動保存（タイマー起動）でも鳴らすため、suspended なら resume を試みる。
+let _chimeCtx = null;
+function playSaveChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!_chimeCtx) _chimeCtx = new Ctx();
+    if (_chimeCtx.state === 'suspended') _chimeCtx.resume();
+    const actx = _chimeCtx;
+    const now = actx.currentTime;
+    [0, 0.18].forEach((offset, i) => {
+      const osc = actx.createOscillator();
+      const gain = actx.createGain();
+      osc.connect(gain); gain.connect(actx.destination);
+      osc.frequency.value = i === 0 ? 880 : 1100; osc.type = 'sine';
+      gain.gain.setValueAtTime(0.3, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.25);
+      osc.start(now + offset); osc.stop(now + offset + 0.25);
+    });
+  } catch (e) {}
+}
+
 // ===== 保存 =====
 async function saveReceipt() {
   if (!parsedData) return;
@@ -5281,6 +5305,7 @@ async function saveReceipt() {
       store_brand_id: storeBrandId || null,
       saved_at: new Date().toISOString()
     });
+    playSaveChime();
     showStatus('success', '保存しました！');
     resetUpload();
   } catch (err) {
@@ -10039,19 +10064,7 @@ async function saveManualReceipt() {
       manually_entered: true,
       saved_at: new Date().toISOString()
     });
-    try {
-      const actx = new (window.AudioContext || window.webkitAudioContext)();
-      const now = actx.currentTime;
-      [0, 0.18].forEach((offset, i) => {
-        const osc = actx.createOscillator();
-        const gain = actx.createGain();
-        osc.connect(gain); gain.connect(actx.destination);
-        osc.frequency.value = i === 0 ? 880 : 1100; osc.type = 'sine';
-        gain.gain.setValueAtTime(0.3, now + offset);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.25);
-        osc.start(now + offset); osc.stop(now + offset + 0.25);
-      });
-    } catch(e) {}
+    playSaveChime();
     clearManualEntry();
     showManualStatus('success', '保存しました！');
   } catch(err) {
