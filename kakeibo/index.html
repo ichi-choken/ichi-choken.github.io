@@ -1714,6 +1714,10 @@
       <div id="manual-add-item-form" style="display:none;"></div>
 
       <span id="manual-total" style="display:none;"></span>
+
+      <!-- 保存結果メッセージ（「保存する」のすぐ上） -->
+      <div id="manual-save-msg" style="display:none;font-size:13px;text-align:center;padding:6px 0 2px;"></div>
+
       <button class="btn btn-primary" onclick="saveManualReceipt()">💾 保存する</button>
       <button class="btn btn-secondary" onclick="clearManualEntry()">🗑 クリア</button>
     </div>
@@ -9989,18 +9993,18 @@ function rebuildStoreDropdown() {
 
 function showManualStatus(type, msg) {
   if (type === 'loading') { showStatus(type, msg); return; }
-  if (type === 'error') { showStatus(type, msg); setTimeout(hideStatus, 3000); return; }
 
-  // 成功メッセージは商品リストエリアに表示
-  const ul = document.getElementById('manual-items-list');
-  if (!ul) { showStatus(type, msg); setTimeout(hideStatus, 3000); return; }
-  ul.innerHTML = '';
-  const li = document.createElement('li');
-  li.style.cssText = 'font-size:13px; color:var(--accent); padding:8px 0; text-align:center;';
-  li.textContent = msg;
-  ul.appendChild(li);
-  clearTimeout(ul._hideTimer);
-  ul._hideTimer = setTimeout(() => { if (manualItems.length === 0) ul.innerHTML = ''; }, 3000);
+  // 成功・エラーは「保存する」ボタンのすぐ上に表示する
+  const el = document.getElementById('manual-save-msg');
+  if (!el) { showStatus(type, msg); setTimeout(hideStatus, 3000); return; }
+  el.textContent = msg;
+  el.style.color = (type === 'error') ? 'var(--danger)' : 'var(--accent)';
+  el.style.display = 'block';
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => {
+    el.style.display = 'none';
+    el.textContent = '';
+  }, 3000);
 }
 </script>
 
