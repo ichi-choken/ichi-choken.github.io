@@ -148,47 +148,6 @@
     transform: translateX(-50%) translateY(0);
   }
 
-  /* 自動保存カウントダウン。タップで停止できるよう pointer-events を有効にする */
-  #autosave-toast {
-    position: fixed;
-    bottom: 110px;
-    left: 50%;
-    transform: translateX(-50%) translateY(12px);
-    width: calc(100% - 32px);
-    max-width: 420px;
-    box-sizing: border-box;
-    background: #1f2933;
-    color: #fff;
-    border: 1px solid rgba(255,255,255,0.18);
-    font-size: 13px;
-    line-height: 1.5;
-    font-family: 'Noto Sans JP', sans-serif;
-    padding: 12px 16px;
-    border-radius: 12px;
-    text-align: center;
-    z-index: 10000;
-    opacity: 0;
-    pointer-events: none;
-    cursor: pointer;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-    transition: opacity 0.2s, transform 0.2s;
-  }
-  #autosave-toast.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-    pointer-events: auto;
-  }
-  #autosave-toast .autosave-sub {
-    display: block;
-    margin-top: 4px;
-    font-size: 11px;
-    opacity: 0.75;
-  }
-  #autosave-toast .autosave-count {
-    font-weight: 700;
-    font-size: 15px;
-  }
-
   body {
     font-family: 'Noto Sans JP', sans-serif;
     background: var(--bg);
@@ -300,6 +259,18 @@
     cursor: pointer;
     width: 100%;
     height: 100%;
+  }
+  /* 長押し（ファイルから選択）用：選択メニュー・テキスト選択を抑止 */
+  .upload-zone, .add-photo-btn {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* 長押しが成立した状態のフィードバック */
+  .upload-zone.lp-ready, .add-photo-btn.lp-ready {
+    border-style: solid;
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .upload-icon { font-size: 36px; margin-bottom: 8px; }
   .upload-label { font-size: 14px; color: var(--text-dim); }
@@ -891,14 +862,6 @@
     cursor: pointer;
     transition: all 0.15s;
   }
-  /* ‹ › は選択状態を持たない移動ボタン。押しやすさのため少し広めにとる */
-  .period-nav {
-    padding: 6px 12px;
-    font-size: 15px;
-    line-height: 1;
-    font-weight: 700;
-    color: var(--text);
-  }
   .period-btn.active {
     background: var(--accent);
     color: var(--btn-on-accent);
@@ -1234,6 +1197,8 @@
     font-size: 13px;
   }
   .manual-item-row:last-child { border-bottom: none; }
+  /* 追加済みリスト：中身がないときは余白を作らない */
+  #manual-items-list:empty { display: none; }
   .manual-item-del {
     background: none;
     border: none;
@@ -1417,9 +1382,6 @@
 <!-- カメラ起動時ユーザー名トースト -->
 <div id="user-toast"></div>
 
-<!-- 自動保存カウントダウン（タップで停止） -->
-<div id="autosave-toast" onclick="stopAutoSaveByUser()"></div>
-
 <!-- ヘッダー -->
 <div class="header">
   <h1>家計簿</h1>
@@ -1431,9 +1393,6 @@
   </div>
   <button class="settings-btn" onclick="openSettingsWithHistory()">⚙ 設定</button>
 </div>
-
-<!-- データ保全バナー（永続化未許可 / バックアップ未実施の警告） -->
-<div id="data-safety-banner" style="display:none; margin:8px 12px 0; padding:10px 12px; border-radius:8px; font-size:12px; line-height:1.6;"></div>
 
 <!-- ユーザーモーダル -->
 <div class="modal-overlay" id="user-modal">
@@ -1472,18 +1431,18 @@
       <button class="btn btn-primary" onclick="runDeleteAuthBiometric()">🔓 生体認証で確認</button>
     </div>
 
-    <!-- パスワード確認欄。
-         form + autocomplete="username"/"current-password" にすると Chrome がログインフォームと判定し、
-         画面遷移のたびに「パスワードを保存しますか？」が出るため、div + autocomplete="off" にしている。 -->
-    <div id="delete-auth-form" style="display:none;">
-      <div class="modal-label">削除用パスワード</div>
-      <input type="password" id="delete-auth-password" name="delete-lock-code"
-             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-             placeholder="パスワードを入力"
-             enterkeyhint="done" aria-label="削除用パスワード"
-             onkeydown="if(event.key==='Enter'){event.preventDefault(); submitDeleteAuthPassword();}">
-      <button class="btn btn-primary" onclick="submitDeleteAuthPassword()">確認して削除</button>
-    </div>
+    <!-- パスワード（autocomplete属性でパスワード管理アプリの自動入力に対応） -->
+    <form id="delete-auth-form" style="display:none;" onsubmit="event.preventDefault(); submitDeleteAuthPassword(); return false;">
+      <div class="modal-label">アカウント（パスワード管理アプリ用の識別名）</div>
+      <input type="text" id="delete-auth-username" name="username" autocomplete="username"
+             value="レシート管理" readonly
+             style="opacity:0.6;" aria-label="アカウント名">
+      <div class="modal-label" style="margin-top:10px;">削除用パスワード</div>
+      <input type="password" id="delete-auth-password" name="password"
+             autocomplete="current-password" placeholder="パスワードを入力"
+             enterkeyhint="done" aria-label="削除用パスワード">
+      <button type="submit" class="btn btn-primary">確認して削除</button>
+    </form>
 
     <div id="delete-auth-msg" style="font-size:12px;min-height:16px;margin-top:8px;"></div>
     <button class="btn btn-secondary" onclick="cancelDeleteAuth()">キャンセル</button>
@@ -1504,18 +1463,18 @@
     </div>
     <div id="delete-lock-bio-unavailable" style="font-size:12px;color:var(--text-dim);margin-bottom:10px;display:none;"></div>
 
-    <div id="delete-lock-form">
-      <div class="modal-label">新しい削除用パスワード</div>
-      <input type="password" id="delete-lock-new" name="delete-lock-code-new"
-             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-             placeholder="4文字以上" aria-label="新しい削除用パスワード">
+    <form id="delete-lock-form" onsubmit="event.preventDefault(); saveDeleteLockPassword(); return false;">
+      <div class="modal-label">アカウント</div>
+      <input type="text" id="delete-lock-username" name="username" autocomplete="username"
+             value="レシート管理" readonly style="opacity:0.6;" aria-label="アカウント名">
+      <div class="modal-label" style="margin-top:10px;">新しい削除用パスワード</div>
+      <input type="password" id="delete-lock-new" name="new-password"
+             autocomplete="new-password" placeholder="4文字以上" aria-label="新しい削除用パスワード">
       <div class="modal-label" style="margin-top:10px;">確認のため再入力</div>
-      <input type="password" id="delete-lock-new2" name="delete-lock-code-confirm"
-             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-             placeholder="もう一度入力" aria-label="パスワード再入力"
-             onkeydown="if(event.key==='Enter'){event.preventDefault(); saveDeleteLockPassword();}">
-      <button class="btn btn-primary" onclick="saveDeleteLockPassword()">🔑 パスワードを設定</button>
-    </div>
+      <input type="password" id="delete-lock-new2" name="new-password-confirm"
+             autocomplete="new-password" placeholder="もう一度入力" aria-label="パスワード再入力">
+      <button type="submit" class="btn btn-primary">🔑 パスワードを設定</button>
+    </form>
 
     <button class="btn btn-secondary" onclick="clearDeleteLock()">ロックを解除（無効化）</button>
     <div id="delete-lock-msg" style="font-size:12px;min-height:16px;margin-top:8px;"></div>
@@ -1541,9 +1500,11 @@
         <div class="upload-zone" id="upload-zone">
           <input type="file" accept="image/*" capture="environment" id="file-input" onchange="onFileSelected(event)">
           <div class="upload-icon">📄</div>
-          <div class="upload-label">タップして撮影 / 画像を選択</div>
-          <div class="upload-sublabel">JPG・PNG対応</div>
+          <div class="upload-label">タップして撮影</div>
+          <div class="upload-sublabel">長押しでファイルから選択／JPG・PNG対応</div>
         </div>
+        <!-- 長押し時に使う「ファイルから選択」用（capture なし＝カメラを起動しない） -->
+        <input type="file" accept="image/*" id="file-input-gallery" style="display:none;" onchange="onFileSelected(event)">
         <img id="preview-img" alt="プレビュー">
       </div>
 
@@ -1597,6 +1558,9 @@
     <div class="card" id="manual-entry-card">
       <div class="card-title">✍️ 手入力で追加</div>
 
+      <!-- 追加済み商品・保存メッセージ（入力欄より上に表示） -->
+      <ul class="item-list" id="manual-items-list" style="margin-bottom:12px;"></ul>
+
       <input type="hidden" id="manual-store" value="手入力">
       <input type="hidden" id="manual-time" value="">
 
@@ -1620,14 +1584,18 @@
         </div>
       </div>
 
-      <!-- 商品名 -->
+      <!-- メモ -->
       <div style="margin-bottom:12px;">
-        <div class="modal-label" style="margin-bottom:4px;">商品名</div>
-        <input type="text" id="manual-item-name" placeholder="例：牛乳" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
+        <div class="modal-label" style="margin-bottom:4px;">メモ</div>
+        <input type="text" id="manual-item-name" placeholder="" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
       </div>
 
       <!-- 支出 -->
       <div id="manual-large-row" style="margin-bottom:12px;">
+        <div style="margin-bottom:4px;">
+          <div class="modal-label">支出</div>
+        </div>
+
         <!-- カテゴリ ドロップダウン -->
         <div id="manual-cat-dropdown" style="position:relative;margin-bottom:8px;">
           <div id="manual-cat-selected" onclick="toggleManualCatDropdown()"
@@ -1681,21 +1649,6 @@
         <div style="display:flex;align-items:center;gap:8px;">
           <input type="number" id="manual-item-price" placeholder="" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
           <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">円</span>
-        </div>
-        <!-- 複数品目を積むための追加ボタン。押さずに保存しても入力中の1件は保存される。 -->
-        <button id="manual-add-item-btn" onclick="addManualItemByUser()"
-          style="width:100%;margin-top:8px;background:none;border:1px dashed var(--border);color:var(--text-dim);font-size:13px;padding:9px;border-radius:6px;cursor:pointer;font-family:inherit;">＋ 商品を追加してもう1件入力</button>
-        <!-- ボタン直下のメッセージ欄。写真側のステータス欄は手入力中は見えないためここに出す -->
-        <div id="manual-add-item-msg" style="display:none;font-size:12px;margin-top:6px;"></div>
-
-        <!-- 追加済みの品目一覧（1件も無いときは非表示）。押した結果がすぐ見えるようボタンの直下に置く -->
-        <div id="manual-items-wrap" style="display:none;margin-top:10px;">
-          <div class="modal-label" style="margin-bottom:4px;">追加済みの商品</div>
-          <ul class="item-list" id="manual-items-list" style="margin-bottom:6px;"></ul>
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text-dim);">
-            <span>この明細の合計</span>
-            <span id="manual-total-visible" style="font-family:'Space Mono',monospace;color:var(--text);font-weight:700;">¥0</span>
-          </div>
         </div>
       </div>
 
@@ -1865,13 +1818,42 @@
     <button class="group-mode-btn" id="group-mode-store" onclick="setGroupMode('store')">🏪 店別</button>
   </div>
   <div class="period-selector">
-    <button class="period-btn period-nav" onclick="shiftPeriod(-1)" id="period-prev" aria-label="前の期間">‹</button>
-    <button class="period-btn active" onclick="setYearMonthPeriod()" id="period-yearmonth">月</button>
+    <button class="period-btn active" onclick="openYearMonthModal()" id="period-yearmonth">月</button>
     <button class="period-btn" onclick="setPeriod('week')" id="period-week">今週</button>
-    <button class="period-btn" onclick="setYearlyPeriod()" id="period-yearly">年間</button>
+    <button class="period-btn" onclick="openYearlyModal()" id="period-yearly">年間</button>
     <button class="period-btn" onclick="openCustomPeriodModal()" id="period-custom">カスタム</button>
     <button class="period-btn" onclick="setPeriod('all')" id="period-all">全期間</button>
-    <button class="period-btn period-nav" onclick="shiftPeriod(1)" id="period-next" aria-label="次の期間">›</button>
+  </div>
+
+  <!-- 年月選択モーダル -->
+  <div class="modal-overlay" id="yearmonth-modal">
+    <div class="modal">
+      <div class="modal-title">📅 月を選択</div>
+      <div class="modal-label">年</div>
+      <select id="ym-year"></select>
+      <div class="modal-label">月</div>
+      <select id="ym-month">
+        <option value="1">1月</option><option value="2">2月</option>
+        <option value="3">3月</option><option value="4">4月</option>
+        <option value="5">5月</option><option value="6">6月</option>
+        <option value="7">7月</option><option value="8">8月</option>
+        <option value="9">9月</option><option value="10">10月</option>
+        <option value="11">11月</option><option value="12">12月</option>
+      </select>
+      <button class="btn btn-primary" onclick="applyYearMonth()">この月を表示</button>
+      <button class="btn btn-secondary" onclick="closeModal('yearmonth-modal')">キャンセル</button>
+    </div>
+  </div>
+
+  <!-- 年間選択モーダル -->
+  <div class="modal-overlay" id="yearly-modal">
+    <div class="modal">
+      <div class="modal-title">📆 年を選択</div>
+      <div class="modal-label">年</div>
+      <select id="yearly-year"></select>
+      <button class="btn btn-primary" onclick="applyYearly()">この年を表示</button>
+      <button class="btn btn-secondary" onclick="closeModal('yearly-modal')">キャンセル</button>
+    </div>
   </div>
 
   <!-- カスタム期間モーダル -->
@@ -2056,8 +2038,7 @@
       </button>
     </div>
     <div class="modal-label">Gemini API キー</div>
-    <input type="password" id="api-key-input" name="gemini-api-key" placeholder="AIza..."
-           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <input type="password" id="api-key-input" placeholder="AIza...">
     <button class="btn btn-primary" onclick="saveApiKey()">APIキーを保存</button>
 
     <div class="modal-label" style="margin-top:16px;">使用モデル</div>
@@ -2139,8 +2120,7 @@
     </div>
     <!-- ツールバー -->
     <div style="display:flex; gap:6px; margin-bottom:8px;">
-      <button class="btn btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="resetLargeDefToDefault()">↺ 大カテゴリのみ戻す</button>
-      <button class="btn btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="resetAllCategoriesToDefault()">↺ 初期カテゴリに戻す</button>
+      <button class="btn btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="resetLargeDefToDefault()">↺ 初期値に戻す</button>
     </div>
     <div style="display:flex; gap:6px; margin-bottom:12px;">
       <button class="btn btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="exportAllCategoryDef()">📤 エクスポート</button>
@@ -2437,15 +2417,6 @@ function getDeleteLockMode() {
   return localStorage.getItem(DEL_LOCK_MODE_KEY) || 'none';
 }
 
-// 認証手段が実際に登録されているか。
-// モードが設定されていても中身が無ければ認証しようがないので、ゲートを出さない判断に使う。
-function hasDeletePassword() {
-  try { return !!localStorage.getItem(DEL_LOCK_PASS_KEY); } catch (e) { return false; }
-}
-function hasDeleteCredential() {
-  try { return !!localStorage.getItem(DEL_LOCK_CRED_KEY); } catch (e) { return false; }
-}
-
 // WebAuthn が実際に使える環境か。HTTPS/localhost 以外（file:// content:// 等）は
 // isSecureContext が true でも RP ID を決定できないため利用不可。
 function canUseWebAuthn() {
@@ -2499,12 +2470,6 @@ function requireDeleteAuth(targetLabel) {
   const mode = getDeleteLockMode();
   if (mode === 'none') return Promise.resolve(true); // 未設定なら従来通り confirm のみ
 
-  // 生体認証が「この環境で」使えて、かつ登録済みか
-  const canBio = mode === 'webauthn' && canUseWebAuthn() && hasDeleteCredential();
-  // 生体認証が使えず、パスワードも未設定なら認証しようがないのでゲートを出さない。
-  // （出しても突破できず、ユーザー削除が永久にできなくなるため）
-  if (!canBio && !hasDeletePassword()) return Promise.resolve(true);
-
   return new Promise(resolve => {
     _deleteAuthResolve = resolve;
     document.getElementById('delete-auth-target').textContent = `「${targetLabel}」を削除するには本人確認が必要です。`;
@@ -2514,7 +2479,7 @@ function requireDeleteAuth(targetLabel) {
     const pw = document.getElementById('delete-auth-password');
     pw.value = '';
 
-    if (canBio) {
+    if (mode === 'webauthn' && canUseWebAuthn()) {
       bio.style.display = 'block'; form.style.display = 'none';
     } else {
       bio.style.display = 'none'; form.style.display = 'block';
@@ -2605,13 +2570,7 @@ function updateDeleteLockStatus() {
   const el = document.getElementById('delete-lock-status');
   if (!el) return;
   const mode = getDeleteLockMode();
-  let label = { none: '未設定', webauthn: '生体認証', password: 'パスワード' }[mode];
-  // 認証手段が実際に使えないときはロックが働かないので、そのことを明示する
-  const canBio = mode === 'webauthn' && canUseWebAuthn() && hasDeleteCredential();
-  if (mode !== 'none' && !canBio && !hasDeletePassword()) {
-    label += '（この環境では無効）';
-  }
-  el.textContent = label;
+  el.textContent = { none: '未設定', webauthn: '生体認証', password: 'パスワード' }[mode];
 }
 
 async function registerDeleteBiometric() {
@@ -4430,113 +4389,6 @@ async function requestPersistentStorage() {
   }
 }
 
-// ===== データ保全（永続化状態＋バックアップ催促） =====
-const BACKUP_AT_KEY    = 'last_backup_at';
-const BACKUP_COUNT_KEY = 'last_backup_count';
-const BACKUP_DAYS_LIMIT  = 14; // これ以上バックアップしていなければ催促
-const BACKUP_COUNT_LIMIT = 20; // 前回バックアップからこれ以上増えたら催促
-const BANNER_SNOOZE_KEY  = 'data_safety_banner_snoozed_at';
-const BANNER_SNOOZE_DAYS = 7;  // 「閉じる」を押してから再表示しない日数
-
-// エクスポート／共有が成功したタイミングで呼ぶ。
-function markBackupDone(count) {
-  try {
-    localStorage.setItem(BACKUP_AT_KEY, new Date().toISOString());
-    localStorage.setItem(BACKUP_COUNT_KEY, String(count));
-  } catch (e) {}
-  updateDataSafetyBanner();
-}
-
-function getBackupInfo() {
-  let at = null, count = null;
-  try {
-    const raw = localStorage.getItem(BACKUP_AT_KEY);
-    if (raw) { const d = new Date(raw); if (!isNaN(d)) at = d; }
-    const c = parseInt(localStorage.getItem(BACKUP_COUNT_KEY), 10);
-    if (!isNaN(c)) count = c;
-  } catch (e) {}
-  const days = at ? Math.floor((Date.now() - at.getTime()) / 86400000) : null;
-  return { at, count, days };
-}
-
-// 「永続化されているか」と「バックアップが古くないか」を確認してバナーを出す。
-// どちらも問題なければ非表示にする。
-async function updateDataSafetyBanner() {
-  const el = document.getElementById('data-safety-banner');
-  if (!el) return;
-
-  // 「閉じる」を押してから BANNER_SNOOZE_DAYS 日間は出さない
-  if (isDataSafetyBannerSnoozed()) { el.style.display = 'none'; return; }
-
-  let persisted = null;
-  try {
-    if (navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted();
-  } catch (e) {}
-
-  let total = null;
-  try { total = (await dbGetAll('receipts')).length; } catch (e) {}
-
-  const { at, count, days } = getBackupInfo();
-  const unsaved = (total !== null && count !== null) ? Math.max(0, total - count) : null;
-  const backupStale = (total !== null && total > 0) && (
-    at === null || days >= BACKUP_DAYS_LIMIT || (unsaved !== null && unsaved >= BACKUP_COUNT_LIMIT)
-  );
-
-  const msgs = [];
-  if (persisted !== true) {
-    msgs.push('<b>⚠ データが自動削除される可能性があります</b><br>'
-      + 'ブラウザの永続化が未許可です（空き容量が減ると保存データがまとめて削除されることがあります）。'
-      + 'このサイトをホーム画面に追加する／ブックマークして何度か開くと許可されやすくなります。');
-  }
-  if (backupStale) {
-    const detail = at === null
-      ? 'まだ一度もエクスポートしていません。'
-      : `前回のエクスポートから${days}日${unsaved ? `／未保存${unsaved}件` : ''}経過しています。`;
-    msgs.push(`<b>📤 エクスポートして保存しておくことをおすすめします</b><br>${detail}`
-      + '<span style="opacity:.85;">「閲覧データの削除」を実行すると永続化していてもデータは消えます。</span>');
-  }
-
-  if (msgs.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
-
-  const danger = persisted !== true;
-  el.style.background = danger ? 'rgba(255,90,90,.12)' : 'rgba(255,190,60,.12)';
-  el.style.border = `1px solid ${danger ? 'var(--danger)' : 'var(--text-dim)'}`;
-  el.style.color = 'var(--text)';
-  el.innerHTML = msgs.join('<div style="height:8px;"></div>')
-    + '<div style="margin-top:8px;">'
-    + '<button class="btn-sm" onclick="openUserModalWithHistory()">📤 エクスポートして保存しておく</button>'
-    + '<button class="btn-sm" style="margin-left:8px;" onclick="dismissDataSafetyBanner()">閉じる</button>'
-    + '</div>';
-  el.style.display = 'block';
-}
-
-// 「閉じる」を押した時刻を記録し、1週間は再表示しない。
-function dismissDataSafetyBanner() {
-  try { localStorage.setItem(BANNER_SNOOZE_KEY, new Date().toISOString()); } catch (e) {}
-  const el = document.getElementById('data-safety-banner');
-  if (el) el.style.display = 'none';
-}
-
-// 非表示期間を手動で解除する（設定画面から）
-function resetDataSafetyBannerSnooze() {
-  try { localStorage.removeItem(BANNER_SNOOZE_KEY); } catch (e) {}
-  renderEnvCheck();
-  updateDataSafetyBanner();
-}
-
-function isDataSafetyBannerSnoozed() {
-  try {
-    const raw = localStorage.getItem(BANNER_SNOOZE_KEY);
-    if (!raw) return false;
-    const at = new Date(raw);
-    if (isNaN(at)) return false;
-    const elapsed = Date.now() - at.getTime();
-    // 端末の時計が巻き戻された場合（負の値）は記録を捨てて表示に戻す
-    if (elapsed < 0) { localStorage.removeItem(BANNER_SNOOZE_KEY); return false; }
-    return elapsed < BANNER_SNOOZE_DAYS * 86400000;
-  } catch (e) { return false; }
-}
-
 // 設定画面に出す環境チェック。HTTPS移行がうまくいったか一目で分かるようにする。
 async function renderEnvCheck() {
   const el = document.getElementById('env-check');
@@ -4556,21 +4408,6 @@ async function renderEnvCheck() {
     if (navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted();
   } catch (e) {}
   rows.push(`${mark(persisted === true)} データの永続化（自動削除の防止）`);
-
-  const bk = getBackupInfo();
-  if (bk.at) {
-    const pad2 = x => String(x).padStart(2, '0');
-    const s = `${bk.at.getFullYear()}/${pad2(bk.at.getMonth()+1)}/${pad2(bk.at.getDate())} ${pad2(bk.at.getHours())}:${pad2(bk.at.getMinutes())}`;
-    rows.push(`${mark(bk.days < BACKUP_DAYS_LIMIT)} 最終エクスポート：${s}（${bk.days}日前・${bk.count}件）`);
-  } else {
-    rows.push(`${mark(false)} 最終エクスポート：まだ実施していません`);
-  }
-
-  if (isDataSafetyBannerSnoozed()) {
-    rows.push('<span style="color:var(--text-dim);">警告バナーは非表示中（閉じるを押してから'
-      + `${BANNER_SNOOZE_DAYS}日間）`
-      + ' <a href="#" onclick="resetDataSafetyBannerSnooze(); return false;" style="color:var(--accent);">今すぐ再表示</a></span>');
-  }
 
   try {
     if (navigator.storage && navigator.storage.estimate) {
@@ -4594,7 +4431,6 @@ async function exportData() {
     a.click();
     URL.revokeObjectURL(url);
     setExportStatus(`✅ ${count}件をエクスポートしました`, 'var(--accent)');
-    markBackupDone(count);
   } catch(e) {
     setExportStatus(`❌ エクスポート失敗：${e.message}`, 'var(--danger)');
   }
@@ -4645,7 +4481,6 @@ function shareExportData() {
   navigator.share({ files: [file], title: '家計簿データ', text: `${count}件の記録` })
     .then(() => {
       setExportStatus(`✅ ${count}件を共有しました`, 'var(--accent)');
-      markBackupDone(count);
       prepareShareFile(); // 次回用に作り直す
     })
     .catch(e => {
@@ -4655,42 +4490,11 @@ function shareExportData() {
 }
 
 // ===== インポート =====
-// JSON文字列リテラルの内側にある制御文字（改行など）だけを除去する。
-// トークンの区切りとしての改行は残すので、整形済みJSONを壊さない。
-function _stripControlCharsInStrings(text) {
-  let out = '';
-  let inString = false, escaped = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (escaped) { out += ch; escaped = false; continue; }
-    if (inString) {
-      if (ch === '\\') { out += ch; escaped = true; continue; }
-      if (ch === '"')   { out += ch; inString = false; continue; }
-      if (ch.charCodeAt(0) < 0x20) continue; // 文字列内の制御文字は捨てる
-      out += ch;
-    } else {
-      if (ch === '"') inString = true;
-      out += ch;
-    }
-  }
-  return out;
-}
-
 async function importData(file) {
   setExportStatus('⏳ 読み込み中...', 'var(--text-dim)');
   try {
     const text = await file.text();
-    let payload;
-    try {
-      payload = JSON.parse(text);
-    } catch (parseErr) {
-      // 転送中に文字列の途中へ改行などの制御文字が混入することがある。
-      // 文字列リテラル内の制御文字だけを取り除いて一度だけ再試行する。
-      const repaired = _stripControlCharsInStrings(text);
-      if (repaired === text) throw parseErr;
-      payload = JSON.parse(repaired); // ここで失敗したら本当に壊れている
-      setExportStatus('⚠ ファイルの一部を修復して読み込みました', 'var(--text-dim)');
-    }
+    const payload = JSON.parse(text);
 
     // 形式チェック
     if (!payload.records || !Array.isArray(payload.records)) {
@@ -4812,7 +4616,6 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'history') {
-    updateDataSafetyBanner();
     if (_historyView === 'cal') loadCalendar();
     else loadHistory();
   }
@@ -4879,6 +4682,66 @@ function removeMultiFile(idx) {
   document.getElementById('analyze-btn').disabled = selectedFiles.length === 0;
 }
 
+// ===== 長押しで「ファイルから選択」 =====
+// 通常タップ : capture 付き input → カメラ起動
+// 長押し     : capture なし input → Android のファイル／ギャラリー選択
+// ※ ファイル選択ダイアログはユーザー操作内でしか開けないため、
+//   「長押し成立をバイブと枠線で通知 → 指を離した瞬間に開く」としている
+const LONG_PRESS_MS = 500;      // 長押しとみなす時間
+const LONG_PRESS_MOVE_TOL = 12; // これ以上動いたらスクロールとみなしてキャンセル（px）
+
+function setupLongPressPicker(zone, camInput, galInput) {
+  let timer = null;   // 長押し判定タイマー
+  let ready = false;  // 長押し成立（指を離せばファイル選択）
+  let fired = false;  // ファイル選択を開いた＝カメラの click を打ち消す
+  let sx = 0, sy = 0;
+
+  const reset = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    ready = false;
+    zone.classList.remove('lp-ready');
+  };
+
+  zone.addEventListener('pointerdown', (e) => {
+    fired = false;              // 新しい操作の開始でフラグをクリア
+    reset();
+    sx = e.clientX; sy = e.clientY;
+    timer = setTimeout(() => {
+      timer = null;
+      ready = true;
+      zone.classList.add('lp-ready');
+      if (navigator.vibrate) { try { navigator.vibrate(30); } catch (_) {} }
+    }, LONG_PRESS_MS);
+  });
+
+  zone.addEventListener('pointermove', (e) => {
+    if (!timer && !ready) return;
+    if (Math.abs(e.clientX - sx) > LONG_PRESS_MOVE_TOL ||
+        Math.abs(e.clientY - sy) > LONG_PRESS_MOVE_TOL) reset();
+  });
+
+  zone.addEventListener('pointerup', () => {
+    if (ready) {
+      fired = true;             // 直後に来る camInput の click を拒否させる
+      reset();
+      showUserToast();
+      galInput.click();         // ユーザー操作内なのでダイアログを開ける
+    } else {
+      reset();
+    }
+  });
+
+  ['pointercancel', 'pointerleave'].forEach(ev => zone.addEventListener(ev, reset));
+
+  // 長押しが成立したときは、カメラ起動の click をキャンセル
+  camInput.addEventListener('click', (e) => {
+    if (fired) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
+  // 長押しで出るコンテキストメニューを抑止
+  zone.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
 function renderMultiPreview() {
   const container = document.getElementById('multi-preview');
   container.innerHTML = '';
@@ -4907,12 +4770,17 @@ function renderMultiPreview() {
     const btn = document.createElement('button');
     btn.className = 'add-photo-btn';
     btn.innerHTML = `
-      <input type="file" accept="image/*" capture="environment" onchange="onMultiFileSelected(event)">
+      <input type="file" accept="image/*" capture="environment" class="cam-input" onchange="onMultiFileSelected(event)">
+      <input type="file" accept="image/*" class="gallery-input" style="display:none;" onchange="onMultiFileSelected(event)">
       <span style="font-size:24px;">＋</span>
       <span>${selectedFiles.length === 0 ? '撮影 / 選択' : '追加'}</span>
+      <span style="font-size:10px;opacity:0.7;">長押しでファイル</span>
     `;
     container.appendChild(btn);
-    btn.querySelector('input[type=file]').addEventListener('click', showUserToast);
+    const camInput = btn.querySelector('.cam-input');
+    const galInput = btn.querySelector('.gallery-input');
+    camInput.addEventListener('click', showUserToast);
+    setupLongPressPicker(btn, camInput, galInput);
   }
 }
 
@@ -5047,7 +4915,6 @@ ${prompt}`
       throw Object.assign(new Error('商品が検出されませんでした。レシートが正しく映っているか確認してください。'), { _custom: true });
     }
 
-    _autoSaveStopped = false; // 新しい写真なので自動保存を復活させる
     renderResult(parsedData);
     showStatus('success', '解析完了！内容を確認して保存してください。');
     // 解析完了音（Web Audio API）
@@ -5152,90 +5019,11 @@ function renderResult(data) {
   });
 
   document.getElementById('result-preview').style.display = 'block';
-  // 表示・編集のたびにカウントダウンを仕切り直す
-  scheduleAutoSave();
-}
-
-// ===== 自動保存（解析結果を10秒間さわらなければ保存） =====
-const AUTOSAVE_SECONDS = 10;
-let _autoSaveTick = null;   // setInterval のID
-let _autoSaveLeft = 0;      // 残り秒
-let _autoSaveStopped = false; // ユーザーがトーストをタップして止めたか（次の写真までON）
-
-function _autoSaveToastEl() { return document.getElementById('autosave-toast'); }
-
-function showAutoSaveToast(html) {
-  const el = _autoSaveToastEl();
-  if (!el) return;
-  el.innerHTML = html;
-  el.classList.add('show');
-}
-
-function hideAutoSaveToast() {
-  const el = _autoSaveToastEl();
-  if (el) el.classList.remove('show');
-}
-
-function renderAutoSaveToast() {
-  showAutoSaveToast(
-    `<span class="autosave-count">${_autoSaveLeft}秒後</span>に自動保存します`
-    + '<span class="autosave-sub">内容を編集するとカウントし直します／タップで自動保存を止める</span>'
-  );
-}
-
-// カウントダウンを開始（再呼び出しで最初からやり直し）。
-// renderResult から呼ばれるので、プレビューを編集するたびにリセットされる。
-function scheduleAutoSave() {
-  clearAutoSaveTimer();
-  if (_autoSaveStopped) return;
-  if (!parsedData) return;
-  // プレビューが表示されていないときは何もしない
-  const pv = document.getElementById('result-preview');
-  if (!pv || pv.style.display === 'none') return;
-
-  _autoSaveLeft = AUTOSAVE_SECONDS;
-  renderAutoSaveToast();
-  _autoSaveTick = setInterval(() => {
-    _autoSaveLeft--;
-    if (_autoSaveLeft <= 0) {
-      clearAutoSaveTimer();
-      hideAutoSaveToast();
-      saveReceipt();
-    } else {
-      renderAutoSaveToast();
-    }
-  }, 1000);
-}
-
-function clearAutoSaveTimer() {
-  if (_autoSaveTick) { clearInterval(_autoSaveTick); _autoSaveTick = null; }
-}
-
-// 一時停止（編集モーダルを開いている間など）。停止フラグは立てない。
-function pauseAutoSave() {
-  clearAutoSaveTimer();
-  hideAutoSaveToast();
-}
-
-// トーストをタップしたとき。この写真については以降カウントしない。
-function stopAutoSaveByUser() {
-  clearAutoSaveTimer();
-  _autoSaveStopped = true;
-  showAutoSaveToast('自動保存を止めました<span class="autosave-sub">「💾 保存する」で手動保存してください</span>');
-  setTimeout(hideAutoSaveToast, 2500);
-}
-
-// 新しい写真を解析するときに停止フラグを戻す
-function resetAutoSaveState() {
-  clearAutoSaveTimer();
-  hideAutoSaveToast();
-  _autoSaveStopped = false;
 }
 
 // ===== 保存 =====
 async function saveReceipt() {
   if (!parsedData) return;
-  pauseAutoSave();
   try {
     // store_brand を店カテゴリに自動登録し、idを取得
     const storeBrandId = autoRegisterStoreBrand(parsedData.store_brand);
@@ -5269,12 +5057,10 @@ function openPreviewReceiptEdit() {
   const modal = document.getElementById('receipt-edit-modal');
   modal.dataset.mode = 'preview';
   modal.classList.add('open');
-  pauseAutoSave(); // 編集中はカウントを止める
 }
 
 // 商品を編集（index指定）または新規追加（引数なし）
 function openPreviewItemEdit(idx) {
-  pauseAutoSave(); // 編集中はカウントを止める
   previewEditItemIndex = (idx !== undefined) ? idx : null;
   const modal = document.getElementById('item-edit-modal');
   modal.dataset.mode = 'preview';
@@ -5332,7 +5118,6 @@ function sendNotification(title, body) {
 }
 
 function resetUpload() {
-  resetAutoSaveState();
   selectedFile = null;
   selectedFiles = [];
   parsedData = null;
@@ -5556,7 +5341,10 @@ function switchHistoryView(mode) {
   document.getElementById('view-btn-cal').classList.toggle('active', mode === 'cal');
   document.getElementById('history-list-body').style.display = mode === 'list' ? 'block' : 'none';
   document.getElementById('history-cal-body').style.display = mode === 'cal' ? 'block' : 'none';
+  // 切り替えた側の中身をここで描画する
+  // （以前は list 側を呼んでいなかったため、タブを往復するまで空のままだった）
   if (mode === 'cal') loadCalendar();
+  else loadHistory();
 }
 
 async function loadCalendar() {
@@ -5565,10 +5353,19 @@ async function loadCalendar() {
   } catch(e) { _calRecords = []; }
 
   if (_calYear === 0) {
-    // 常に現在の月から開く（分割払いなど未来日付のレシートに引っ張られないため）
     const now = new Date();
     _calYear = now.getFullYear();
     _calMonth = now.getMonth();
+    // データがあれば最新月に合わせる
+    if (_calRecords.length > 0) {
+      const dates = _calRecords.map(r => r.date).filter(Boolean).sort();
+      const latest = dates[dates.length - 1];
+      if (latest) {
+        const d = new Date(latest);
+        _calYear = d.getFullYear();
+        _calMonth = d.getMonth();
+      }
+    }
   }
   renderCalendar();
 }
@@ -5763,11 +5560,11 @@ async function calDayBulkRecat(records, bulkBtn) {
   const apiKey = localStorage.getItem('gemini_api_key');
   if (!apiKey) { openSettingsWithHistory(); return; }
 
-  const targets = records.filter(r => r.items?.length > 0);
-  const manualCount = targets.filter(
-    r => r.manually_entered || r.items.every(i => i.manually_categorized)
-  ).length;
-  // この日の分は確認なしで即実行する（件数が少なく、やり直しも容易なため）
+  const targets = records.filter(r => {
+    if (r.manually_entered) return false;
+    if (r.items?.length > 0 && r.items.every(i => i.manually_categorized)) return false;
+    return true;
+  });
 
   if (targets.length === 0) {
     const orig = bulkBtn.textContent;
@@ -6595,15 +6392,11 @@ const _initNow = new Date();
 let customPeriodFrom = new Date(_initNow.getFullYear(), _initNow.getMonth(), 1, 0, 0, 0);
 let customPeriodTo   = new Date(_initNow.getFullYear(), _initNow.getMonth() + 1, 0, 23, 59, 59);
 
-// 「今週」から何週ずらしているか。0 が今週、-1 が先週。
-let _weekOffset = 0;
-
 function getPeriodRange(period) {
   const now = new Date();
   const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
   let from;
   if (period === 'week') {
-    to.setDate(to.getDate() + _weekOffset * 7);
     from = new Date(to);
     from.setDate(from.getDate() - 6);
     from.setHours(0,0,0,0);
@@ -6630,75 +6423,10 @@ function setPeriod(period) {
   currentPeriod = period;
   drillMiddle = null;
   drillLarge = null;
-  if (period === 'week') { _weekOffset = 0; updateWeekBtnLabel(); }
   document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById('period-' + period);
   if (btn) btn.classList.add('active');
-  updatePeriodNavState();
   loadStats();
-}
-
-// ===== 期間の前後移動（‹ ›） =====
-// 選択中の期間の種類に応じて1単位ずらす。delta: -1 で過去、+1 で未来。
-function shiftPeriod(delta) {
-  if (currentPeriod === 'all') return; // 移動先が無い
-
-  if (currentPeriod === 'yearmonth') {
-    const y = customPeriodFrom.getFullYear();
-    const m = customPeriodFrom.getMonth() + delta; // Date が桁上がりを処理する
-    customPeriodFrom = new Date(y, m, 1, 0, 0, 0);
-    customPeriodTo   = new Date(y, m + 1, 0, 23, 59, 59);
-    document.getElementById('period-yearmonth').textContent =
-      monthBtnLabel(customPeriodFrom.getFullYear(), customPeriodFrom.getMonth() + 1);
-
-  } else if (currentPeriod === 'yearly') {
-    yearlyYear += delta;
-    document.getElementById('period-yearly').textContent = `${yearlyYear}年`;
-
-  } else if (currentPeriod === 'week') {
-    _weekOffset += delta;
-    updateWeekBtnLabel();
-
-  } else if (currentPeriod === 'custom') {
-    // 選択されている期間の長さ分だけ前後にずらす
-    const span = customPeriodTo.getTime() - customPeriodFrom.getTime() + 1000;
-    customPeriodFrom = new Date(customPeriodFrom.getTime() + span * delta);
-    customPeriodTo   = new Date(customPeriodTo.getTime()   + span * delta);
-    updateCustomBtnLabel();
-  }
-
-  drillMiddle = null;
-  drillLarge = null;
-  updatePeriodNavState();
-  loadStats();
-}
-
-function updateWeekBtnLabel() {
-  const btn = document.getElementById('period-week');
-  if (!btn) return;
-  if (_weekOffset === 0) { btn.textContent = '今週'; return; }
-  const { from, to } = getPeriodRange('week');
-  btn.textContent = `${from.getMonth() + 1}/${from.getDate()}〜${to.getMonth() + 1}/${to.getDate()}`;
-}
-
-function updateCustomBtnLabel() {
-  const btn = document.getElementById('period-custom');
-  if (!btn) return;
-  const pad = n => String(n).padStart(2, '0');
-  const fmt = d => `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  btn.textContent = `🗓 ${fmt(customPeriodFrom)}〜${fmt(customPeriodTo)}`;
-}
-
-// 全期間では移動できないので ‹ › を無効化する
-function updatePeriodNavState() {
-  const disabled = currentPeriod === 'all';
-  ['period-prev', 'period-next'].forEach(id => {
-    const b = document.getElementById(id);
-    if (!b) return;
-    b.disabled = disabled;
-    b.style.opacity = disabled ? '0.3' : '1';
-    b.style.cursor  = disabled ? 'default' : 'pointer';
-  });
 }
 
 // ===== 月ボタン初期化（今月をデフォルト適用） =====
@@ -6721,20 +6449,34 @@ function initMonthPeriod() {
 }
 
 // ===== 年月選択 =====
-// 月ボタン：押すと今月に切り替える。別の月は ‹ › で移動する。
-function setYearMonthPeriod() {
+function openYearMonthModal() {
+  // 年セレクトを動的生成（現在年から5年前まで）
   const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth() + 1;
+  const yearSel = document.getElementById('ym-year');
+  yearSel.innerHTML = '';
+  for (let y = now.getFullYear(); y >= now.getFullYear() - 5; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y + '年';
+    yearSel.appendChild(opt);
+  }
+  // デフォルトを今月に
+  yearSel.value = now.getFullYear();
+  document.getElementById('ym-month').value = now.getMonth() + 1;
+  openModal('yearmonth-modal');
+}
+
+function applyYearMonth() {
+  const y = parseInt(document.getElementById('ym-year').value);
+  const m = parseInt(document.getElementById('ym-month').value);
   customPeriodFrom = new Date(y, m - 1, 1, 0, 0, 0);
-  customPeriodTo   = new Date(y, m, 0, 23, 59, 59);
+  customPeriodTo   = new Date(y, m, 0, 23, 59, 59); // 月末
+  closeModal('yearmonth-modal');
+  // ボタンラベルを更新
   document.getElementById('period-yearmonth').textContent = monthBtnLabel(y, m);
   currentPeriod = 'yearmonth';
-  drillMiddle = null;
-  drillLarge = null;
   document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('period-yearmonth').classList.add('active');
-  updatePeriodNavState();
   loadStats();
 }
 
@@ -6745,16 +6487,27 @@ let yearlyChart = null;
 let yearlyDetailChart = null;
 let yearlyRecords = [];
 
-// 年間ボタン：押すと今年に切り替える。別の年は ‹ › で移動する。
-function setYearlyPeriod() {
-  yearlyYear = new Date().getFullYear();
+function openYearlyModal() {
+  const now = new Date();
+  const yearSel = document.getElementById('yearly-year');
+  yearSel.innerHTML = '';
+  for (let y = now.getFullYear(); y >= now.getFullYear() - 10; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y + '年';
+    yearSel.appendChild(opt);
+  }
+  yearSel.value = yearlyYear || now.getFullYear();
+  openModal('yearly-modal');
+}
+
+function applyYearly() {
+  yearlyYear = parseInt(document.getElementById('yearly-year').value);
+  closeModal('yearly-modal');
   document.getElementById('period-yearly').textContent = `${yearlyYear}年`;
   currentPeriod = 'yearly';
-  drillMiddle = null;
-  drillLarge = null;
   document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('period-yearly').classList.add('active');
-  updatePeriodNavState();
   loadStats();
 }
 
@@ -6983,7 +6736,6 @@ function applyCustomPeriod() {
   currentPeriod = 'custom';
   document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('period-custom').classList.add('active');
-  updatePeriodNavState();
   loadStats();
 }
 
@@ -8108,23 +7860,11 @@ function _pushNavState(type) {
 // これらをpopstateハンドラとEscから呼ぶ
 function _closeModalInner(id) {
   const el = document.getElementById(id);
-  // 同上：パスワード欄を空にしてから閉じる
-  el.querySelectorAll('input[type="password"]').forEach(i => { i.value = ''; });
-  const wasPreview = el.dataset.mode === 'preview';
   el.classList.remove('open');
   if (el.dataset.mode) delete el.dataset.mode;
-  // プレビュー編集を閉じたらカウントダウンを再開する
-  if (wasPreview && (id === 'receipt-edit-modal' || id === 'item-edit-modal')) {
-    scheduleAutoSave();
-  }
 }
 function _closeSettingsInner() {
   document.getElementById('settings-modal').classList.remove('open');
-  // 値の入ったパスワード欄が残っていると、以降の画面遷移でブラウザが
-  // 「パスワードを保存しますか？」を出すことがあるため空にしておく。
-  // 実際のキーは localStorage にあり、次に開いたとき openSettings() が入れ直す。
-  const apiEl = document.getElementById('api-key-input');
-  if (apiEl) apiEl.value = '';
   if (document.getElementById('tab-stats').classList.contains('active')) {
     loadStats();
   }
@@ -8235,6 +7975,12 @@ async function _closeTopLayer() {
   }
   if (document.getElementById('receipt-edit-modal').classList.contains('open')) {
     _closeModalInner('receipt-edit-modal'); return;
+  }
+  if (document.getElementById('yearmonth-modal').classList.contains('open')) {
+    _closeModalInner('yearmonth-modal'); return;
+  }
+  if (document.getElementById('yearly-modal').classList.contains('open')) {
+    _closeModalInner('yearly-modal'); return;
   }
   if (document.getElementById('custom-period-modal').classList.contains('open')) {
     _closeModalInner('custom-period-modal'); return;
@@ -8430,6 +8176,7 @@ document.addEventListener('keydown', e => {
     document.getElementById('add-middle-modal').classList.contains('open') ||
     document.getElementById('item-edit-modal').classList.contains('open') ||
     document.getElementById('receipt-edit-modal').classList.contains('open') ||
+    document.getElementById('yearmonth-modal').classList.contains('open') ||
     document.getElementById('custom-period-modal').classList.contains('open') ||
     document.getElementById('user-modal').classList.contains('open') ||
     document.getElementById('large-editor-overlay').classList.contains('open') ||
@@ -8500,9 +8247,8 @@ async function initApp(isResume) {
   // テーマ復元
   _applyThemeClass();
 
-  // 永続ストレージの申請（失敗しても続行）。
-  // Chromeは利用実績が増えると後から許可されるため、拒否された場合に備えて起動のたびに申請する。
-  requestPersistentStorage().then(() => updateDataSafetyBanner());
+  // 永続ストレージの申請（初回のみ・失敗しても続行）
+  if (!isResume) { requestPersistentStorage(); }
 
   if (currentUser) {
     document.getElementById('current-user-label').textContent = currentUser;
@@ -8551,6 +8297,13 @@ document.getElementById('period-yearly').textContent = `${yearlyYear}年`;
 // 一度だけ登録すればよいため初回起動後に設定
 document.getElementById('file-input').addEventListener('click', showUserToast);
 
+// 通常モード：長押しで「ファイルから選択」を有効化
+setupLongPressPicker(
+  document.getElementById('upload-zone'),
+  document.getElementById('file-input'),
+  document.getElementById('file-input-gallery')
+);
+
 // アプリをバックグラウンドから復帰したとき（タブ切り替え・スリープ解除など）
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible') {
@@ -8579,29 +8332,11 @@ function openCategoryEditor() { /* 廃止済み：商品カテゴリエディタ
 function _closeCategoryEditorBase() { /* 廃止済み */ }
 var closeCategoryEditor = _closeCategoryEditorBase;
 
-// 大中小すべてを組み込みの初期カテゴリに戻す。
-// DEFAULT_CATEGORY_DEF は id を持たないため、ここで採番してから largeDef を
-// その id で組み直す。片方だけ戻すと大カテゴリとの紐付けが壊れる。
-function resetAllCategoriesToDefault() {
-  if (!confirm('カテゴリを初期状態に戻しますか？\n\n大・中・小すべてが組み込みの初期カテゴリに置き換わり、\n追加・編集した内容は失われます。\n\n※保存済みのレシートは消えません（表示カテゴリ名のみ変わる場合があります）')) return;
-
-  categoryDef = JSON.parse(JSON.stringify(DEFAULT_CATEGORY_DEF)).map(m => ({ id: _genMiddleId(), ...m }));
-  const nameToId = {};
-  categoryDef.forEach(m => { nameToId[m.middle] = m.id; });
-
-  largeDef = JSON.parse(JSON.stringify(DEFAULT_LARGE_DEF)).map(l => ({
-    large: l.large,
-    middles: l.middles.map(n => nameToId[n]).filter(Boolean)
-  }));
-  _syncLargeDefFromCategoryDef();
-
+function resetCategoryToDefault() {
+  if (!confirm('カテゴリをデフォルトに戻しますか？\n現在の変更はすべて失われます。')) return;
+  categoryDef = JSON.parse(JSON.stringify(DEFAULT_CATEGORY_DEF));
   saveCategoryDef();
-  saveLargeDef();
-  if (document.getElementById('cat-editor-list'))   renderCatEditorList();
-  if (document.getElementById('large-editor-list')) renderLargeEditorList();
-  updateCategoryStatus();
-  refreshManualCategoryUI();
-  alert(`初期カテゴリに戻しました（大${largeDef.length} / 中${categoryDef.length} / 小${categoryDef.reduce((s,m)=>s+(m.small?.length||0),0)}）`);
+  renderCatEditorList();
 }
 
 function exportCategoryDef() {
@@ -8763,8 +8498,36 @@ async function recategorizeReceipt(id, btn) {
   const apiKey = localStorage.getItem('gemini_api_key');
   if (!apiKey) { openSettingsWithHistory(); return; }
 
-  // 手入力・手動設定済みも対象にする（強制再カテゴライズ）。
-  // 手で直した内容が上書きされるため、一括実行側で確認を取っている。
+  // 手入力 or 全商品が手動カテゴリ設定済みの場合は再カテゴライズ不可
+  {
+    const all = await dbGetAll('receipts');
+    const record = all.find(r => r.id === id);
+    if (record) {
+      const showBlockError = (msg) => {
+        btn.textContent = '🚫';
+        btn.classList.add('error');
+        btn.title = msg;
+        btn.dataset.errorMsg = msg;
+        setTimeout(() => {
+          if (btn.classList.contains('error')) {
+            btn.classList.remove('error');
+            btn.textContent = '🔄';
+            btn.title = '再カテゴライズ';
+            delete btn.dataset.errorMsg;
+          }
+        }, 3000);
+      };
+      if (record.manually_entered) {
+        showBlockError('手入力で作成されたレシートは再カテゴライズできません');
+        return;
+      }
+      const allManual = record.items?.length > 0 && record.items.every(i => i.manually_categorized);
+      if (allManual) {
+        showBlockError('全商品が手動で設定されているため再カテゴライズできません');
+        return;
+      }
+    }
+  }
 
   if (recatActiveCount >= RECAT_MAX_CONCURRENT) {
     const orig = btn.textContent;
@@ -8993,8 +8756,6 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
 
 // ===== 一括再カテゴライズ =====
 let _bulkRecatCancelled = false;
-let _bulkRecatArmed = false;      // 2回押し確認の状態
-let _bulkRecatArmTimer = null;
 
 async function startBulkRecategorize() {
   const apiKey = localStorage.getItem('gemini_api_key');
@@ -9002,43 +8763,6 @@ async function startBulkRecategorize() {
 
   const all = await dbGetAll('receipts');
   if (!all.length) { alert('レシートがありません'); return; }
-
-  // 手入力・手動設定済みも含めてすべて対象にする（商品が無いレコードだけ除外）
-  const targets = all.filter(r => r.items?.length > 0);
-  const manualCount = targets.filter(
-    r => r.manually_entered || r.items.every(i => i.manually_categorized)
-  ).length;
-  const skipped = all.length - targets.length;
-
-  // 確認はダイアログではなくボタン自体で行う。
-  // Chromeが「追加ダイアログの表示をブロック」状態だと confirm() が即 false を返し、
-  // 押しても何も起きない（機能が無効に見える）ため。
-  const bulkBtn = document.getElementById('bulk-recat-btn');
-  if (manualCount > 0 && !_bulkRecatArmed) {
-    const t0 = Date.now();
-    const ok = confirm(`${targets.length}件を再カテゴライズします。\nうち${manualCount}件は手入力または手動でカテゴリを設定したものです。\n\n実行するとAIの判定で上書きされます。よろしいですか？`);
-    // Chromeが「追加ダイアログの表示をブロック」状態だと confirm() は
-    // ユーザー操作なしで即 false を返す。その場合はボタン側の確認に切り替える。
-    const blocked = !ok && (Date.now() - t0) < 50;
-    if (blocked) {
-      _bulkRecatArmed = true;
-      const orig = bulkBtn.innerHTML;
-      bulkBtn.innerHTML = `⚠ 手動設定${manualCount}件を上書きします — もう一度押すと実行`;
-      bulkBtn.style.color = 'var(--danger)';
-      clearTimeout(_bulkRecatArmTimer);
-      _bulkRecatArmTimer = setTimeout(() => {
-        _bulkRecatArmed = false;
-        bulkBtn.innerHTML = orig;
-        bulkBtn.style.color = '';
-      }, 6000);
-      return;
-    }
-    if (!ok) return;
-  }
-  clearTimeout(_bulkRecatArmTimer);
-  _bulkRecatArmed = false;
-  bulkBtn.innerHTML = '🔄 全件まとめて再カテゴライズ';
-  bulkBtn.style.color = '';
 
   _bulkRecatCancelled = false;
 
@@ -9048,6 +8772,14 @@ async function startBulkRecategorize() {
 
   const label = document.getElementById('bulk-recat-label');
   const fill  = document.getElementById('bulk-recat-bar-fill');
+
+  // 手入力・全商品手動設定済みはスキップ
+  const targets = all.filter(r => {
+    if (r.manually_entered) return false;
+    if (r.items?.length > 0 && r.items.every(i => i.manually_categorized)) return false;
+    return true;
+  });
+  const skipped = all.length - targets.length;
 
   const ids = targets.map(r => r.id);
   const total = ids.length;
@@ -9824,30 +9556,10 @@ function _updateManualCatImportHint() {
   hint.style.display = hasProperCats ? 'none' : 'block';
 }
 
-// 隠し select に値をセットする。
-// select は options に無い値を代入しても無視される（value が '' のままになる）ため、
-// 該当 option が無ければ作ってから代入する。収入カテゴリはここを通す。
-function setManualMiddleValue(name) {
-  const sel = document.getElementById('manual-item-middle');
-  if (!sel) return;
-  if (!name) { sel.value = ''; return; }
-  if (![...sel.options].some(o => o.value === name)) {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    sel.appendChild(opt);
-  }
-  sel.value = name;
-}
-
-// 入力欄の内容を品目リストに積む。
-// 商品名も金額も空なら何もしない（保存時の自動追加で空行が混ざるのを防ぐ）。
-// 戻り値: 追加できたら true
 function addManualItem() {
   const name = document.getElementById('manual-item-name').value.trim();
-  const priceRaw = document.getElementById('manual-item-price').value.trim();
-  const price = parseInt(priceRaw) || 0;
-  if (!name && !priceRaw) return false;
+  const price = parseInt(document.getElementById('manual-item-price').value) || 0;
+
 
   // 中カテゴリ：ドロップダウンで選ばれた値を優先して使う
   let middle = 'その他';
@@ -9870,29 +9582,7 @@ function addManualItem() {
   document.getElementById('manual-item-name').value = '';
   document.getElementById('manual-item-price').value = '';
   renderManualItems();
-  return true;
-}
-
-// 「＋ 商品を追加」ボタン用。追加後は商品名にフォーカスを戻す。
-function addManualItemByUser() {
-  if (!addManualItem()) {
-    setManualAddItemMsg('商品名か金額を入力してから押してください', 'var(--danger)');
-    return;
-  }
-  setManualAddItemMsg('追加しました。続けて次の商品を入力できます', 'var(--accent)');
   document.getElementById('manual-item-name').focus();
-}
-
-// 追加ボタン直下のメッセージ表示（3秒で消える）
-let _manualAddMsgTimer = null;
-function setManualAddItemMsg(text, color) {
-  const el = document.getElementById('manual-add-item-msg');
-  if (!el) return;
-  el.textContent = text;
-  el.style.color = color;
-  el.style.display = 'block';
-  clearTimeout(_manualAddMsgTimer);
-  _manualAddMsgTimer = setTimeout(() => { el.style.display = 'none'; }, 3000);
 }
 
 function deleteManualItem(idx) {
@@ -9902,16 +9592,11 @@ function deleteManualItem(idx) {
 
 function renderManualItems() {
   const ul = document.getElementById('manual-items-list');
-  const wrap = document.getElementById('manual-items-wrap');
   ul.innerHTML = '';
   if (manualItems.length === 0) {
     document.getElementById('manual-total').textContent = '¥0';
-    const tv0 = document.getElementById('manual-total-visible');
-    if (tv0) tv0.textContent = '¥0';
-    if (wrap) wrap.style.display = 'none';
     return;
   }
-  if (wrap) wrap.style.display = 'block';
   manualItems.forEach((item, idx) => {
     const li = document.createElement('li');
     li.className = 'manual-item-row';
@@ -9927,18 +9612,12 @@ function renderManualItems() {
   });
   const total = manualItems.reduce((s, i) => s + (i.price || 0), 0);
   document.getElementById('manual-total').textContent = '¥' + total.toLocaleString();
-  const tv = document.getElementById('manual-total-visible');
-  if (tv) tv.textContent = '¥' + total.toLocaleString();
 }
 
 async function saveManualReceipt() {
   if (!getCurrentUser()) { openUserModalWithHistory(); return; }
-  // 入力欄に書きかけの1件があれば保存時に取り込む（空なら何も足さない）
+  // プラスボタンがないので保存時に自動追加
   addManualItem();
-  if (manualItems.length === 0) {
-    showManualStatus('error', '商品名か金額を入力してください');
-    return;
-  }
   let store = document.getElementById('manual-store').value.trim();
 
   if (_manualEntryType === 'income') {
@@ -10020,18 +9699,6 @@ function setManualEntryType(type) {
 
   if (!isExpense) {
     // ── 収入モード：ドロップダウンを収入カテゴリ名で上書き、中カテゴリ非表示 ──
-    // 隠し select の中身も収入カテゴリに入れ替える。
-    // これを忘れると選択値が select に入らず、保存時に「その他」へ落ちる。
-    const midSelInit = document.getElementById('manual-item-middle');
-    if (midSelInit) {
-      midSelInit.innerHTML = '';
-      INCOME_NAMES.forEach(n => {
-        const opt = document.createElement('option');
-        opt.value = n;
-        opt.textContent = n;
-        midSelInit.appendChild(opt);
-      });
-    }
     if (catList) {
       catList.innerHTML = '';
       INCOME_NAMES.forEach((name, i) => {
@@ -10044,7 +9711,8 @@ function setManualEntryType(type) {
           catList.style.display = 'none';
           document.getElementById('manual-cat-arrow').textContent = '▼';
           // hidden select に反映
-          setManualMiddleValue(name);
+          const midSel = document.getElementById('manual-item-middle');
+          if (midSel) midSel.value = name;
         };
         catList.appendChild(div);
       });
@@ -10052,7 +9720,8 @@ function setManualEntryType(type) {
     if (catLabel) catLabel.textContent = INCOME_NAMES[0];
     if (midWrap)  midWrap.style.display = 'none';
     // hidden select 初期値
-    setManualMiddleValue(INCOME_NAMES[0]);
+    const midSel = document.getElementById('manual-item-middle');
+    if (midSel) midSel.value = INCOME_NAMES[0];
   } else {
     // ── 支出モード：通常の大カテゴリドロップダウンに戻す ──
     rebuildManualCatDropdown();
@@ -10192,20 +9861,13 @@ function showManualStatus(type, msg) {
   // 成功メッセージは商品リストエリアに表示
   const ul = document.getElementById('manual-items-list');
   if (!ul) { showStatus(type, msg); setTimeout(hideStatus, 3000); return; }
-  const wrap = document.getElementById('manual-items-wrap');
   ul.innerHTML = '';
   const li = document.createElement('li');
   li.style.cssText = 'font-size:13px; color:var(--accent); padding:8px 0; text-align:center;';
   li.textContent = msg;
   ul.appendChild(li);
-  if (wrap) wrap.style.display = 'block'; // 一覧が空でもメッセージを見せる
   clearTimeout(ul._hideTimer);
-  ul._hideTimer = setTimeout(() => {
-    if (manualItems.length === 0) {
-      ul.innerHTML = '';
-      if (wrap) wrap.style.display = 'none';
-    }
-  }, 3000);
+  ul._hideTimer = setTimeout(() => { if (manualItems.length === 0) ul.innerHTML = ''; }, 3000);
 }
 </script>
 
