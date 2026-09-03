@@ -5378,22 +5378,24 @@ async function loadCalendar() {
     _calRecords = await dbGetAll('receipts');
   } catch(e) { _calRecords = []; }
 
-  if (_calYear === 0) {
-    const now = new Date();
-    _calYear = now.getFullYear();
-    _calMonth = now.getMonth();
-    // データがあれば最新月に合わせる
-    if (_calRecords.length > 0) {
-      const dates = _calRecords.map(r => r.date).filter(Boolean).sort();
-      const latest = dates[dates.length - 1];
-      if (latest) {
-        const d = new Date(latest);
-        _calYear = d.getFullYear();
-        _calMonth = d.getMonth();
-      }
-    }
-  }
+  // 履歴（カレンダー）を開いたときは常に今日の月を表示する
+  // ※ 月の前後移動（calChangeMonth）は renderCalendar だけを呼ぶのでここを通らず、閲覧中の月は保たれる
+  const now = new Date();
+  _calYear = now.getFullYear();
+  _calMonth = now.getMonth();
+
   renderCalendar();
+
+  // 今日のレシートがあれば日別パネルも開いておく
+  const pad2 = n => String(n).padStart(2, '0');
+  const todayStr = `${_calYear}-${pad2(_calMonth + 1)}-${pad2(now.getDate())}`;
+  const todayRecords = _calRecords.filter(r => r.date === todayStr);
+  if (todayRecords.length > 0) {
+    showCalDayPanel(todayStr, todayRecords);
+  } else {
+    const panel = document.getElementById('cal-day-panel');
+    if (panel) panel.style.display = 'none';
+  }
 }
 
 function calChangeMonth(delta) {
