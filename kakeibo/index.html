@@ -204,9 +204,25 @@
   .header {
     padding: 20px 16px 12px;
     border-bottom: 1px solid var(--border);
+    /* 左右を同じ幅（1fr）にして中央列を真ん中に保つ。
+       右に更新日時を追加してもユーザー名がずれないようにするため */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+  }
+  .header h1 { min-width: 0; }
+  .header-center {
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+  }
+  .header-right {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
   }
   .header h1 {
     font-family: 'Space Mono', monospace;
@@ -216,8 +232,8 @@
   }
   /* ファイルの更新日時（ユーザー名と設定ボタンの間） */
   .build-label {
-    flex-shrink: 0;
-    margin: 0 8px;
+    flex-shrink: 1;
+    margin: 0;
     font-size: 10px;
     line-height: 1.25;
     color: var(--text-dim);
@@ -1476,8 +1492,10 @@
       <span id="current-user-label">未選択</span>
     </button>
   </div>
-  <span id="build-label" class="build-label"></span>
-  <button class="settings-btn" onclick="openSettingsWithHistory()">⚙ 設定</button>
+  <div class="header-right">
+    <span id="build-label" class="build-label"></span>
+    <button class="settings-btn" onclick="openSettingsWithHistory()">⚙ 設定</button>
+  </div>
 </div>
 
 <!-- データ保全バナー（永続化未許可 / バックアップ未実施の警告） -->
@@ -4565,7 +4583,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-03 22:39';
+const APP_BUILD = '2026-09-03 22:42';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
