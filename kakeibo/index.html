@@ -116,7 +116,8 @@
   body.theme-light .view-toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   body.theme-light .chart-type-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   body.theme-light .manual-cat-opt.active { color: var(--accent); background: #e8f4ef; }
-  body.theme-light .manual-mid-opt.active { color: var(--accent); }
+  body.theme-light .manual-mid-opt.active,
+  body.theme-light .manual-small-opt.active { color: var(--accent); }
   body.theme-light .store-select-opt.active { color: var(--accent); background: #e8f4ef; }
   body.theme-light .recategorize-btn { background: var(--surface2); border-color: var(--border); color: var(--text-dim); }
   body.theme-light .split-toggle::after { background: #fff; }
@@ -1641,6 +1642,23 @@
               <span id="manual-mid-arrow" style="font-size:11px;color:var(--text-dim);">▼</span>
             </div>
             <div id="manual-mid-list" style="display:none;position:absolute;top:100%;left:0;right:0;
+                 background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+                 margin-top:4px;z-index:101;overflow-y:auto;max-height:200px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- 小カテゴリ ドロップダウン（中カテゴリ選択後に表示・任意） -->
+        <div id="manual-small-dropdown" style="display:none;padding-left:28px;margin-bottom:8px;border-left:2px solid var(--border);">
+          <div style="position:relative;">
+            <div id="manual-small-selected" onclick="toggleManualSmallDropdown()"
+              style="display:flex;justify-content:space-between;align-items:center;
+                     background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+                     padding:7px 10px;cursor:pointer;font-size:13px;color:var(--text);">
+              <span id="manual-small-label" style="color:var(--text-dim);font-size:12px;"></span>
+              <span id="manual-small-arrow" style="font-size:11px;color:var(--text-dim);">▼</span>
+            </div>
+            <div id="manual-small-list" style="display:none;position:absolute;top:100%;left:0;right:0;
                  background:var(--surface2);border:1px solid var(--border);border-radius:6px;
                  margin-top:4px;z-index:101;overflow-y:auto;max-height:200px;">
             </div>
@@ -9226,6 +9244,7 @@ const LARGE_CAT_SVG = {
 
 // 現在選択中の大カテゴリindex
 let _manualLargeIdx = 0;
+let _manualSmall = ''; // 手入力で選択中の小カテゴリ（未選択は空文字列）
 
 function toggleManualCatDropdown() {
   const list = document.getElementById('manual-cat-list');
@@ -9308,6 +9327,99 @@ function chooseMidCat(midName) {
       if (opt.value === midName) { midSel.value = midName; break; }
     }
   }
+  // 小カテゴリをこの中カテゴリの内容で作り直す
+  rebuildManualSmallDropdown(midName);
+}
+
+// ===== 小カテゴリ（任意） =====
+function toggleManualSmallDropdown() {
+  const list = document.getElementById('manual-small-list');
+  const arrow = document.getElementById('manual-small-arrow');
+  const trigger = document.getElementById('manual-small-selected');
+  const isHidden = list.style.display === 'none' || list.style.display === '';
+  if (isHidden) {
+    // 画面下部で開くと見切れるため、余白に応じて上側に開く
+    const rect = trigger.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const maxH = Math.min(200, window.innerHeight * 0.4);
+    if (spaceBelow < maxH && spaceAbove > spaceBelow) {
+      list.style.top = 'auto';
+      list.style.bottom = '100%';
+      list.style.marginTop = '0';
+      list.style.marginBottom = '4px';
+    } else {
+      list.style.top = '100%';
+      list.style.bottom = 'auto';
+      list.style.marginTop = '4px';
+      list.style.marginBottom = '0';
+    }
+  }
+  list.style.display = isHidden ? 'block' : 'none';
+  arrow.textContent = isHidden ? '▲' : '▼';
+}
+
+function chooseSmallCat(smallName) {
+  _manualSmall = smallName || '';
+  const lbl = document.getElementById('manual-small-label');
+  if (lbl) {
+    lbl.textContent = _manualSmall || '選択（オプション）';
+    lbl.style.color = _manualSmall ? 'var(--text)' : 'var(--text-dim)';
+  }
+  const list = document.getElementById('manual-small-list');
+  if (list) list.style.display = 'none';
+  const arrow = document.getElementById('manual-small-arrow');
+  if (arrow) arrow.textContent = '▼';
+  document.querySelectorAll('.manual-small-opt').forEach(el => {
+    el.classList.toggle('active', el.dataset.small === _manualSmall);
+  });
+}
+
+// 中カテゴリ名から小カテゴリ一覧を作る。
+// midName が空・定義なし・小カテゴリ0件のいずれも非表示にする。
+function rebuildManualSmallDropdown(midName) {
+  const wrap = document.getElementById('manual-small-dropdown');
+  const list = document.getElementById('manual-small-list');
+  if (!wrap || !list) return;
+
+  _manualSmall = '';
+  const entry = midName ? (categoryDef || []).find(m => m.middle === midName) : null;
+  const smalls = (entry && Array.isArray(entry.small)) ? entry.small : [];
+
+  if (smalls.length === 0) {
+    wrap.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  list.innerHTML = '';
+
+  // 任意項目なので「選択しない」を先頭に置く
+  const none = document.createElement('div');
+  none.className = 'manual-cat-opt manual-small-opt active';
+  none.dataset.small = '';
+  none.textContent = '— 選択しない —';
+  none.onclick = () => chooseSmallCat('');
+  list.appendChild(none);
+
+  smalls.forEach(sm => {
+    const div = document.createElement('div');
+    div.className = 'manual-cat-opt manual-small-opt';
+    div.dataset.small = sm;
+    div.textContent = sm;
+    div.onclick = () => chooseSmallCat(sm);
+    list.appendChild(div);
+  });
+
+  // 初期は未選択
+  const lbl = document.getElementById('manual-small-label');
+  if (lbl) {
+    lbl.textContent = '選択（オプション）';
+    lbl.style.color = 'var(--text-dim)';
+  }
+  list.style.display = 'none';
+  document.getElementById('manual-small-arrow').textContent = '▼';
 }
 
 function rebuildManualMidDropdown(lIdx) {
@@ -9327,6 +9439,7 @@ function rebuildManualMidDropdown(lIdx) {
 
   if (midEntries.length === 0) {
     wrap.style.display = 'none';
+    rebuildManualSmallDropdown('');
     return;
   }
 
@@ -9349,6 +9462,9 @@ function rebuildManualMidDropdown(lIdx) {
   // hidden select を空に
   const midSel = document.getElementById('manual-item-middle');
   if (midSel) midSel.value = '';
+
+  // 中カテゴリが未選択に戻るので、小カテゴリも閉じる
+  rebuildManualSmallDropdown('');
 }
 
 function selectManualLarge(i) {
@@ -9586,7 +9702,7 @@ function addManualItem() {
     name,
     middle_category: middle,
     middle_category_id: middleId || midNameToId(middle) || null,
-    small_category: '',
+    small_category: _manualSmall || '',
     price
   });
   nameEl.value = '';
@@ -9735,6 +9851,7 @@ function setManualEntryType(type) {
     }
     if (catLabel) catLabel.textContent = INCOME_NAMES[0];
     if (midWrap)  midWrap.style.display = 'none';
+    rebuildManualSmallDropdown(''); // 収入モードでは小カテゴリも非表示
     // hidden select 初期値
     const midSel = document.getElementById('manual-item-middle');
     if (midSel) midSel.value = INCOME_NAMES[0];
