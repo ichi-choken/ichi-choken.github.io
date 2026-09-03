@@ -4360,7 +4360,7 @@ ${storeTypeNote}
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-03 22:03';
+const APP_BUILD = '2026-09-03 22:04';
 
 function _extractBuild(text) {
   const m = text.match(/APP_BUILD\s*=\s*'([^']+)'/);
@@ -5368,17 +5368,17 @@ function _playNotes(notes) {
 // 自動保存の残り3・2・1秒で鳴らす柔らかい音
 // E メジャーの和音を順に上げ、保存時の E6 へ自然につなげる
 function playCountdownTick(left) {
-  const table = { 3: 659.25, 2: 830.61, 1: 987.77 }; // E5 / G#5 / B5
-  const f = table[left] || 659.25;
-  _playNotes([{ f, d: 0.38, vol: 0.16, atk: 0.015, harm: 0.18 }]);
+  const table = { 3: 329.63, 2: 415.30, 1: 493.88 }; // E4 / G#4 / B4
+  const f = table[left] || 329.63;
+  _playNotes([{ f, d: 0.42, vol: 0.20, atk: 0.018, harm: 0.10 }]);
 }
 
 // 保存完了音「ぴぃこんこん」
 function playSaveChime() {
   _playNotes([
-    { f: 1318.51, at: 0.00, d: 0.30, vol: 0.20, atk: 0.010, harm: 0.15 }, // ぴぃ E6
-    { f: 659.25,  at: 0.20, d: 0.45, vol: 0.24, atk: 0.015, harm: 0.20 }, // こん E5
-    { f: 659.25,  at: 0.46, d: 0.60, vol: 0.24, atk: 0.015, harm: 0.20 }, // こん E5
+    { f: 659.25, at: 0.00, d: 0.32, vol: 0.20, atk: 0.014, harm: 0.10 }, // ぴぃ E5
+    { f: 329.63, at: 0.22, d: 0.50, vol: 0.26, atk: 0.018, harm: 0.10 }, // こん E4
+    { f: 329.63, at: 0.50, d: 0.65, vol: 0.26, atk: 0.018, harm: 0.10 }, // こん E4
   ]);
 }
 
