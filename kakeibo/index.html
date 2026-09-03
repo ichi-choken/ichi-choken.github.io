@@ -4360,7 +4360,7 @@ ${storeTypeNote}
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-03 21:45';
+const APP_BUILD = '2026-09-03 22:10';
 
 function _extractBuild(text) {
   const m = text.match(/APP_BUILD\s*=\s*'([^']+)'/);
@@ -5325,52 +5325,60 @@ function startAutoSaveCountdown() {
 //   - currentTime をその場で読んで予約する（resume 待ちをしない）
 //   - ゲインは setValueAtTime → exponentialRampToValueAtTime(0.001)
 // 作ったコンテキストは上限に当たらないよう、鳴り終わったら閉じる。
-// notes: [{ f: 周波数, f2: 終点周波数(任意), at: 開始オフセット(秒), d: 長さ(秒), type, vol }]
+// notes: [{ f: 周波数, at: 開始オフセット(秒), d: 長さ(秒), vol, atk: 立ち上がり(秒), harm: 倍音の音量比 }]
+// 耳障りを避けるためのポイント：
+//   - 音量をいきなり最大にするとブチッというクリックノイズが出るので、数msかけて上げる
+//   - ピッチを急に変えない（定常の鐘のような減衰にする）
+//   - オクターブ上の倍音を薄く重ねて柔らかな響きにする
 function _playNotes(notes) {
   try {
     const actx = new (window.AudioContext || window.webkitAudioContext)();
     const now = actx.currentTime;
     let last = 0;
-    notes.forEach(n => {
+
+    const voice = (f, t0, dur, vol, atk) => {
       const osc = actx.createOscillator();
       const gain = actx.createGain();
       osc.connect(gain);
       gain.connect(actx.destination);
-      osc.type = n.type || 'sine';
-      const t0 = now + (n.at || 0);
-      const dur = n.d || 0.15;
-      const vol = n.vol == null ? 0.3 : n.vol;
-      if (n.f2) {
-        // 起点から終点へピッチを変化（「ぴぅ」のような音）
-        osc.frequency.setValueAtTime(n.f, t0);
-        osc.frequency.exponentialRampToValueAtTime(n.f2, t0 + dur);
-      } else {
-        osc.frequency.value = n.f;
-      }
-      gain.gain.setValueAtTime(vol, t0);
-      gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(vol, t0 + atk);          // ゆるやかな立ち上がり
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);  // 鐘のような減衰
+      gain.gain.setValueAtTime(0, t0 + dur);
       osc.start(t0);
-      osc.stop(t0 + dur);
+      osc.stop(t0 + dur + 0.02);
+    };
+
+    notes.forEach(n => {
+      const t0 = now + (n.at || 0);
+      const dur = n.d || 0.4;
+      const vol = n.vol == null ? 0.25 : n.vol;
+      const atk = n.atk == null ? 0.012 : n.atk;
+      voice(n.f, t0, dur, vol, atk);
+      if (n.harm) voice(n.f * 2, t0, dur * 0.6, vol * n.harm, atk);
       last = Math.max(last, (n.at || 0) + dur);
     });
+
     setTimeout(() => { try { actx.close(); } catch (e) {} }, (last + 0.5) * 1000);
   } catch (e) {}
 }
 
-// 自動保存の残り3・2・1秒で鳴らす「ぴぅ」
-// 残りが少なくなるほど高い音にする
+// 自動保存の残り3・2・1秒で鳴らす柔らかい音
+// E メジャーの和音を順に上げ、保存時の E6 へ自然につなげる
 function playCountdownTick(left) {
-  const table = { 3: 880, 2: 988, 1: 1109 };
-  const f = table[left] || 880;
-  _playNotes([{ f, f2: f * 1.5, d: 0.12, type: 'sine', vol: 0.22 }]);
+  const table = { 3: 659.25, 2: 830.61, 1: 987.77 }; // E5 / G#5 / B5
+  const f = table[left] || 659.25;
+  _playNotes([{ f, d: 0.38, vol: 0.16, atk: 0.015, harm: 0.18 }]);
 }
 
 // 保存完了音「ぴぃこんこん」
 function playSaveChime() {
   _playNotes([
-    { f: 1318, f2: 1760, at: 0.00, d: 0.14, type: 'sine', vol: 0.30 }, // ぴぃ
-    { f: 660,  at: 0.18, d: 0.18, type: 'sine', vol: 0.30 },           // こん
-    { f: 660,  at: 0.40, d: 0.22, type: 'sine', vol: 0.30 },           // こん
+    { f: 1318.51, at: 0.00, d: 0.30, vol: 0.20, atk: 0.010, harm: 0.15 }, // ぴぃ E6
+    { f: 659.25,  at: 0.20, d: 0.45, vol: 0.24, atk: 0.015, harm: 0.20 }, // こん E5
+    { f: 659.25,  at: 0.46, d: 0.60, vol: 0.24, atk: 0.015, harm: 0.20 }, // こん E5
   ]);
 }
 
