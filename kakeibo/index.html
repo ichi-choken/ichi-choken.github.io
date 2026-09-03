@@ -4499,7 +4499,15 @@ function getPref(key) {
 function setPref(key, value) {
   loadPrefs();
   _prefs[key] = value;
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify(_prefs)); } catch (e) {}
+  _persistPrefs();
+}
+
+// localStorage は「閲覧データの削除」や容量不足で消えるので、
+// テーマ・APIキーと同じく IndexedDB にも二重書きしておく。
+function _persistPrefs() {
+  const json = JSON.stringify(_prefs);
+  try { localStorage.setItem(PREFS_KEY, json); } catch (e) {}
+  _saveSettingIDB(PREFS_KEY, json);
 }
 
 // 数値で持つものは select の文字列を変換してから保存する
@@ -4514,7 +4522,7 @@ function onPrefChange(key, value) {
 
 function resetPrefs() {
   _prefs = Object.assign({}, PREF_DEFAULTS);
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify(_prefs)); } catch (e) {}
+  _persistPrefs();
   renderPrefsUI();
   applyPrefsImmediate();
 }
@@ -4557,7 +4565,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-03 22:34';
+const APP_BUILD = '2026-09-03 22:39';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -4688,6 +4696,7 @@ async function buildExportFile() {
     exported_at: new Date().toISOString(),
     categoryDef: categoryDef || [],
     largeDef: largeDef || [],
+    prefs: loadPrefs(),
     records
   };
   const json = JSON.stringify(payload, null, 2);
@@ -4987,6 +4996,19 @@ async function importData(file) {
           }
         });
       });
+    }
+
+    // 動作設定（自動保存秒数・効果音など）も引き継ぐ。
+    // 知らないキーは無視し、既定値で埋めることで古いファイルでも壊れないようにする。
+    if (payload.prefs && typeof payload.prefs === 'object') {
+      const picked = {};
+      Object.keys(PREF_DEFAULTS).forEach(k => {
+        if (payload.prefs[k] !== undefined) picked[k] = payload.prefs[k];
+      });
+      _prefs = Object.assign({}, PREF_DEFAULTS, picked);
+      _persistPrefs();
+      renderPrefsUI();
+      applyPrefsImmediate();
     }
 
     if (payload.version >= 2 && Array.isArray(payload.largeDef) && payload.largeDef.length > 0) {
@@ -8891,16 +8913,18 @@ async function initApp(isResume) {
       _loadSettingIDB(USERS_KEY),
       _loadSettingIDB('app_theme'),
       _loadSettingIDB('gemini_api_key'),
+      _loadSettingIDB(PREFS_KEY),
     ]);
     const timeout = new Promise(res => setTimeout(() => res(null), 5000));
     const restored = await Promise.race([restore, timeout]);
     if (restored) {
-      const [idbUser, idbUsers, idbTheme, idbKey] = restored;
+      const [idbUser, idbUsers, idbTheme, idbKey, idbPrefs] = restored;
       // IDBに値があれば常にlocalStorageへ同期（localStorageが古くても上書き）
       if (idbUser)  localStorage.setItem(CURRENT_USER_KEY, idbUser);
       if (idbUsers) localStorage.setItem(USERS_KEY, idbUsers);
       if (idbTheme) localStorage.setItem('app_theme', idbTheme);
       if (idbKey)   localStorage.setItem('gemini_api_key', idbKey);
+      if (idbPrefs) { localStorage.setItem(PREFS_KEY, idbPrefs); _prefs = null; }
     } else {
       console.warn('IDB設定の復元がタイムアウトしました（localStorageの値で続行）');
     }
@@ -8966,19 +8990,24 @@ async function initApp(isResume) {
 
 // 履歴の初期表示を設定に合わせる（ここでは表示切り替えのみで読み込みはしない。
 // 読み込みは switchTab('history') が _historyView を見て行う）
-(function () {
+function applyHistoryViewPref() {
   _historyView = getPref('historyView') === 'list' ? 'list' : 'cal';
   const isList = _historyView === 'list';
   document.getElementById('view-btn-list').classList.toggle('active', isList);
   document.getElementById('view-btn-cal').classList.toggle('active', !isList);
   document.getElementById('history-list-body').style.display = isList ? 'block' : 'none';
   document.getElementById('history-cal-body').style.display  = isList ? 'none' : 'block';
-})();
+}
+applyHistoryViewPref();
 
 renderBuildLabel();
 
 (async () => {
   await initApp(false);
+  // initApp の中で IDB から設定が復元されることがあるので、
+  // localStorage が消えていたケースに備えてここでもう一度適用する。
+  applyHistoryViewPref();
+  updateUploadLabelByPref();
   // 起動時に開くタブ（DB接続完了後に切り替える）
   const startTab = getPref('startTab');
   if (startTab === 'history' || startTab === 'stats') switchTab(startTab);
