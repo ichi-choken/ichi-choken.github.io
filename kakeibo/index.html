@@ -2125,6 +2125,9 @@
     <div id="delete-lock-status" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);"></div>
     <button class="btn btn-secondary" onclick="openDeleteLockModal()">🔒 削除ロックを設定</button>
 
+    <div class="modal-label" style="margin-top:16px;">バージョン</div>
+    <div id="version-info" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);">確認中...</div>
+
     <div class="modal-label" style="margin-top:16px;">環境チェック</div>
     <div id="env-check" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);">確認中...</div>
     <button class="btn btn-secondary" onclick="testSaveChime()">🔔 保存音をテスト</button>
@@ -4353,6 +4356,56 @@ ${storeTypeNote}
 7. middle_category と small_category は必ず上記定義の文字列をそのまま使うこと（独自の文字列を作らない）`;
 }
 
+// ===== バージョン情報 =====
+// APP_BUILD はこのファイルを更新するたびに書き換える。
+// サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
+// 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
+const APP_BUILD = '2026-09-03 21:45';
+
+function _extractBuild(text) {
+  const m = text.match(/APP_BUILD\s*=\s*'([^']+)'/);
+  return m ? m[1] : null;
+}
+
+// キャッシュを避けて再読み込みする
+function reloadLatestVersion() {
+  location.replace(location.pathname + '?v=' + Date.now());
+}
+
+async function renderVersionInfo() {
+  const el = document.getElementById('version-info');
+  if (!el) return;
+
+  const rows = [`この画面の版：<b>${APP_BUILD}</b>`];
+  const paint = extra => {
+    el.innerHTML = rows.concat(extra || []).map(r => `<div style="padding:3px 0;">${r}</div>`).join('');
+  };
+  paint('<span style="color:var(--text-dim);">サーバーの最新版を確認中...</span>');
+
+  let serverBuild = null, failed = null;
+  try {
+    const res = await fetch(location.pathname + '?_check=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    serverBuild = _extractBuild(await res.text());
+    if (!serverBuild) throw new Error('版情報が見つかりません');
+  } catch (e) {
+    failed = e.message;
+  }
+
+  if (failed) {
+    rows.push(`<span style="color:var(--text-dim);">サーバーの確認に失敗：${escHtml(failed)}</span>`);
+    paint();
+  } else if (serverBuild === APP_BUILD) {
+    rows.push('<span style="color:var(--accent);">✅ 最新版を表示中です</span>');
+    paint();
+  } else {
+    rows.push(`<span style="color:var(--danger);">⚠ 反映待ち（キャッシュの古い版を表示中）</span>`);
+    rows.push(`<span style="color:var(--text-dim);">サーバー側の版：<b>${escHtml(serverBuild)}</b></span>`);
+    paint();
+    el.innerHTML += '<button class="btn btn-secondary" style="margin-top:6px;" onclick="reloadLatestVersion()">🔄 最新版を読み込む</button>';
+  }
+}
+
 // ===== 設定（APIキー） =====
 function openSettings() {
   const key = localStorage.getItem('gemini_api_key') || '';
@@ -4364,6 +4417,7 @@ function openSettings() {
   updateExportStatus();
   updateDeleteLockStatus();
   renderEnvCheck();
+  renderVersionInfo();
   _updateThemeBtns();
   document.getElementById('settings-modal').classList.add('open');
 }
@@ -5266,44 +5320,24 @@ function startAutoSaveCountdown() {
 }
 
 // ===== 効果音 =====
-// AudioContext は作りすぎるとブラウザの上限に当たるため、1つを使い回す。
-// 重要：suspended のまま currentTime を読むと時刻が進まず、resume 完了時には
-// 予約時刻が過去になって発音されない。必ず resume を await してから予約する。
-let _chimeCtx = null;
-
-function _getAudioCtx() {
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return null;
-  if (!_chimeCtx) {
-    try { _chimeCtx = new Ctx(); } catch (e) { return null; }
-  }
-  return _chimeCtx;
-}
-
-// 初回のタップで AudioContext を起こしておく。
-// これをやらないと、タイマー起動の自動保存時に鳴らせないことがある。
-function _unlockAudio() {
-  const actx = _getAudioCtx();
-  if (!actx) return;
-  if (actx.state === 'suspended') actx.resume().catch(() => {});
-}
-
-// notes: [{ f: 周波数, at: 開始オフセット(秒), d: 長さ(秒), type, vol }]
-async function _playNotes(notes) {
+// 解析完了音（実際に鳴っている）と同じ方式にする。
+//   - 呼ばれるたび new AudioContext() を作る
+//   - currentTime をその場で読んで予約する（resume 待ちをしない）
+//   - ゲインは setValueAtTime → exponentialRampToValueAtTime(0.001)
+// 作ったコンテキストは上限に当たらないよう、鳴り終わったら閉じる。
+// notes: [{ f: 周波数, f2: 終点周波数(任意), at: 開始オフセット(秒), d: 長さ(秒), type, vol }]
+function _playNotes(notes) {
   try {
-    const actx = _getAudioCtx();
-    if (!actx) return;
-    if (actx.state === 'suspended') {
-      try { await actx.resume(); } catch (e) { return; }
-    }
-    if (actx.state !== 'running') return;
-    const base = actx.currentTime + 0.02; // 予約は少し先の時刻に置く
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = actx.currentTime;
+    let last = 0;
     notes.forEach(n => {
       const osc = actx.createOscillator();
       const gain = actx.createGain();
-      osc.connect(gain); gain.connect(actx.destination);
+      osc.connect(gain);
+      gain.connect(actx.destination);
       osc.type = n.type || 'sine';
-      const t0 = base + (n.at || 0);
+      const t0 = now + (n.at || 0);
       const dur = n.d || 0.15;
       const vol = n.vol == null ? 0.3 : n.vol;
       if (n.f2) {
@@ -5313,12 +5347,13 @@ async function _playNotes(notes) {
       } else {
         osc.frequency.value = n.f;
       }
-      gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
       osc.start(t0);
-      osc.stop(t0 + dur + 0.02);
+      osc.stop(t0 + dur);
+      last = Math.max(last, (n.at || 0) + dur);
     });
+    setTimeout(() => { try { actx.close(); } catch (e) {} }, (last + 0.5) * 1000);
   } catch (e) {}
 }
 
@@ -5327,21 +5362,20 @@ async function _playNotes(notes) {
 function playCountdownTick(left) {
   const table = { 3: 880, 2: 988, 1: 1109 };
   const f = table[left] || 880;
-  _playNotes([{ f, f2: f * 1.5, d: 0.10, type: 'square', vol: 0.18 }]);
+  _playNotes([{ f, f2: f * 1.5, d: 0.12, type: 'sine', vol: 0.22 }]);
 }
 
 // 保存完了音「ぴぃこんこん」
 function playSaveChime() {
   _playNotes([
-    { f: 1318, f2: 1760, at: 0.00, d: 0.12, type: 'square', vol: 0.22 }, // ぴぃ
-    { f: 660,  at: 0.16, d: 0.16, type: 'sine',   vol: 0.30 },           // こん
-    { f: 660,  at: 0.36, d: 0.20, type: 'sine',   vol: 0.30 },           // こん
+    { f: 1318, f2: 1760, at: 0.00, d: 0.14, type: 'sine', vol: 0.30 }, // ぴぃ
+    { f: 660,  at: 0.18, d: 0.18, type: 'sine', vol: 0.30 },           // こん
+    { f: 660,  at: 0.40, d: 0.22, type: 'sine', vol: 0.30 },           // こん
   ]);
 }
 
 // 設定画面からの動作確認用
 function testSaveChime() {
-  _unlockAudio();
   playCountdownTick(3);
   setTimeout(() => playCountdownTick(2), 700);
   setTimeout(() => playCountdownTick(1), 1400);
@@ -8687,10 +8721,6 @@ document.getElementById('period-yearly').textContent = `${yearlyYear}年`;
 // #file-input（通常モード）クリック時にユーザー名トーストを表示
 // 一度だけ登録すればよいため初回起動後に設定
 document.getElementById('file-input').addEventListener('click', showUserToast);
-
-// 初回のタップで効果音の AudioContext を起こしておく
-document.addEventListener('pointerdown', _unlockAudio, { once: true });
-document.addEventListener('touchstart',  _unlockAudio, { once: true });
 
 // 通常モード：長押しで「ファイルから選択」を有効化
 setupLongPressPicker(
