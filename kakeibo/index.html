@@ -149,6 +149,47 @@
     transform: translateX(-50%) translateY(0);
   }
 
+  /* 自動保存カウントダウン。タップで停止できるよう pointer-events を有効にする */
+  #autosave-toast {
+    position: fixed;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    width: calc(100% - 32px);
+    max-width: 420px;
+    box-sizing: border-box;
+    background: #1f2933;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.18);
+    font-size: 13px;
+    line-height: 1.5;
+    font-family: 'Noto Sans JP', sans-serif;
+    padding: 12px 16px;
+    border-radius: 12px;
+    text-align: center;
+    z-index: 10000;
+    opacity: 0;
+    pointer-events: none;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  #autosave-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
+  #autosave-toast .autosave-sub {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    opacity: 0.75;
+  }
+  #autosave-toast .autosave-count {
+    font-weight: 700;
+    font-size: 15px;
+  }
+
   body {
     font-family: 'Noto Sans JP', sans-serif;
     background: var(--bg);
@@ -1412,6 +1453,9 @@
 <!-- カメラ起動時ユーザー名トースト -->
 <div id="user-toast"></div>
 
+<!-- 自動保存カウントダウントースト（タップで停止） -->
+<div id="autosave-toast" onclick="stopAutoSaveByUser()"></div>
+
 <!-- ヘッダー -->
 <div class="header">
   <h1>家計簿</h1>
@@ -1574,9 +1618,6 @@
         <ul class="item-list" id="res-items"></ul>
         <button onclick="openPreviewAddItem()" style="width:100%;margin-top:10px;background:none;border:1px dashed var(--border);color:var(--text-dim);font-size:12px;padding:8px;border-radius:6px;cursor:pointer;font-family:inherit;">＋ 商品を追加</button>
       </div>
-      <!-- 自動保存カウントダウン（タップで中止） -->
-      <div id="autosave-toast" style="display:none;margin-bottom:8px;padding:9px 12px;border-radius:8px;border:1px solid var(--accent);background:var(--surface2);color:var(--text-dim);font-size:12px;text-align:center;cursor:pointer;"
-           onclick="cancelAutoSave()"></div>
       <button class="btn btn-primary" onclick="saveReceipt()">💾 保存する</button>
       <button class="btn btn-secondary" onclick="resetUpload()">やり直す</button>
     </div>
@@ -4360,7 +4401,7 @@ ${storeTypeNote}
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-03 22:04';
+const APP_BUILD = '2026-09-03 22:08';
 
 function _extractBuild(text) {
   const m = text.match(/APP_BUILD\s*=\s*'([^']+)'/);
@@ -5266,57 +5307,85 @@ function renderResult(data) {
 
   document.getElementById('result-preview').style.display = 'block';
 
-  // 編集のたびに renderResult が呼ばれるので、その都度カウントを付け直す
-  startAutoSaveCountdown();
+  // 表示・編集のたびにカウントダウンを仕切り直す
+  scheduleAutoSave();
 }
 
-// ===== 解析結果の自動保存 =====
-// 最後の編集から AUTOSAVE_SEC 秒で保存する。トーストをタップすると中止。
-const AUTOSAVE_SEC = 10;
-let _autoSaveTimer = null;
-let _autoSaveLeft = 0;
-let _autoSaveCancelled = false;
+// ===== 自動保存（解析結果を AUTOSAVE_SECONDS 秒間さわらなければ保存） =====
+const AUTOSAVE_SECONDS = 10;
+let _autoSaveTick = null;     // setInterval のID
+let _autoSaveLeft = 0;        // 残り秒
+let _autoSaveStopped = false; // ユーザーがトーストをタップして止めたか（次の写真までON）
 
-function cancelAutoSave() {
-  if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
-  _autoSaveCancelled = true;
-  const el = document.getElementById('autosave-toast');
-  if (el) {
-    el.textContent = '自動保存を中止しました（保存ボタンを押してください）';
-    el.style.borderColor = 'var(--border)';
-  }
-}
+function _autoSaveToastEl() { return document.getElementById('autosave-toast'); }
 
-function stopAutoSaveCountdown() {
-  if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
-  const el = document.getElementById('autosave-toast');
-  if (el) el.style.display = 'none';
-}
-
-function startAutoSaveCountdown() {
-  const el = document.getElementById('autosave-toast');
+function showAutoSaveToast(html) {
+  const el = _autoSaveToastEl();
   if (!el) return;
-  if (_autoSaveCancelled) return;     // 一度中止したらこのレシートでは復活させない
+  el.innerHTML = html;
+  el.classList.add('show');
+}
+
+function hideAutoSaveToast() {
+  const el = _autoSaveToastEl();
+  if (el) el.classList.remove('show');
+}
+
+function renderAutoSaveToast() {
+  showAutoSaveToast(
+    `<span class="autosave-count">${_autoSaveLeft}秒後</span>に自動保存します`
+    + '<span class="autosave-sub">内容を編集するとカウントし直します／タップで自動保存を止める</span>'
+  );
+}
+
+// カウントダウンを開始（再呼び出しで最初からやり直し）。
+// renderResult から呼ばれるので、プレビューを編集するたびにリセットされる。
+function scheduleAutoSave() {
+  clearAutoSaveTimer();
+  if (_autoSaveStopped) return;
   if (!parsedData) return;
+  // プレビューが表示されていないときは何もしない
+  const pv = document.getElementById('result-preview');
+  if (!pv || pv.style.display === 'none') return;
 
-  if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
-  _autoSaveLeft = AUTOSAVE_SEC;
-  el.style.borderColor = 'var(--accent)';
-  el.style.display = 'block';
-  const paint = () => { el.textContent = `⏱ ${_autoSaveLeft}秒後に自動保存します（タップで中止）`; };
-  paint();
-
-  _autoSaveTimer = setInterval(() => {
-    _autoSaveLeft -= 1;
+  _autoSaveLeft = AUTOSAVE_SECONDS;
+  renderAutoSaveToast();
+  _autoSaveTick = setInterval(() => {
+    _autoSaveLeft--;
     if (_autoSaveLeft <= 3 && _autoSaveLeft > 0) playCountdownTick(_autoSaveLeft);
     if (_autoSaveLeft <= 0) {
-      clearInterval(_autoSaveTimer); _autoSaveTimer = null;
-      el.style.display = 'none';
+      clearAutoSaveTimer();
+      hideAutoSaveToast();
       saveReceipt();
-      return;
+    } else {
+      renderAutoSaveToast();
     }
-    paint();
   }, 1000);
+}
+
+function clearAutoSaveTimer() {
+  if (_autoSaveTick) { clearInterval(_autoSaveTick); _autoSaveTick = null; }
+}
+
+// 一時停止（編集モーダルを開いている間など）。停止フラグは立てない。
+function pauseAutoSave() {
+  clearAutoSaveTimer();
+  hideAutoSaveToast();
+}
+
+// トーストをタップしたとき。この写真については以降カウントしない。
+function stopAutoSaveByUser() {
+  clearAutoSaveTimer();
+  _autoSaveStopped = true;
+  showAutoSaveToast('自動保存を止めました<span class="autosave-sub">「💾 保存する」で手動保存してください</span>');
+  setTimeout(hideAutoSaveToast, 2500);
+}
+
+// 新しい写真を解析するときに停止フラグを戻す
+function resetAutoSaveState() {
+  clearAutoSaveTimer();
+  hideAutoSaveToast();
+  _autoSaveStopped = false;
 }
 
 // ===== 効果音 =====
@@ -5393,7 +5462,7 @@ function testSaveChime() {
 // ===== 保存 =====
 async function saveReceipt() {
   if (!parsedData) return;
-  stopAutoSaveCountdown();
+  pauseAutoSave();
   try {
     // store_brand を店カテゴリに自動登録し、idを取得
     const storeBrandId = autoRegisterStoreBrand(parsedData.store_brand);
@@ -5421,6 +5490,7 @@ let previewEditItemIndex = null; // null=新規追加, 数値=編集中index
 
 // 店舗・日付を編集
 function openPreviewReceiptEdit() {
+  pauseAutoSave();
   document.getElementById('edit-store-input').value = parsedData.store || '';
   document.getElementById('edit-date-input').value = parsedData.date || '';
   document.getElementById('edit-time-input').value = parsedData.time || '';
@@ -5432,6 +5502,7 @@ function openPreviewReceiptEdit() {
 
 // 商品を編集（index指定）または新規追加（引数なし）
 function openPreviewItemEdit(idx) {
+  pauseAutoSave();
   previewEditItemIndex = (idx !== undefined) ? idx : null;
   const modal = document.getElementById('item-edit-modal');
   modal.dataset.mode = 'preview';
@@ -5489,8 +5560,7 @@ function sendNotification(title, body) {
 }
 
 function resetUpload() {
-  stopAutoSaveCountdown();
-  _autoSaveCancelled = false;
+  resetAutoSaveState();
   selectedFile = null;
   selectedFiles = [];
   parsedData = null;
