@@ -2166,6 +2166,62 @@
     <div id="delete-lock-status" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);"></div>
     <button class="btn btn-secondary" onclick="openDeleteLockModal()">🔒 削除ロックを設定</button>
 
+    <div class="modal-label" style="margin-top:16px;">動作設定</div>
+
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">解析後の自動保存</div>
+    <select id="pref-autosave" onchange="onPrefChange('autosaveSec', this.value)" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:9px 10px; color:var(--text); font-size:13px; font-family:inherit; outline:none; appearance:none; cursor:pointer; margin-bottom:10px;">
+      <option value="0">自動保存しない</option>
+      <option value="5">5秒後</option>
+      <option value="10">10秒後</option>
+      <option value="15">15秒後</option>
+      <option value="20">20秒後</option>
+      <option value="30">30秒後</option>
+      <option value="60">60秒後</option>
+    </select>
+
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">効果音</div>
+    <select id="pref-sound" onchange="onPrefChange('soundMode', this.value)" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:9px 10px; color:var(--text); font-size:13px; font-family:inherit; outline:none; appearance:none; cursor:pointer; margin-bottom:10px;">
+      <option value="all">すべて鳴らす</option>
+      <option value="save">保存・解析完了のみ（カウント音なし）</option>
+      <option value="off">鳴らさない</option>
+    </select>
+
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">効果音の音量</div>
+    <select id="pref-volume" onchange="onPrefChange('soundVolume', this.value)" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:9px 10px; color:var(--text); font-size:13px; font-family:inherit; outline:none; appearance:none; cursor:pointer; margin-bottom:10px;">
+      <option value="0.5">小</option>
+      <option value="1">標準</option>
+      <option value="1.6">大</option>
+    </select>
+
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">起動時に開くタブ</div>
+    <select id="pref-start-tab" onchange="onPrefChange('startTab', this.value)" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:9px 10px; color:var(--text); font-size:13px; font-family:inherit; outline:none; appearance:none; cursor:pointer; margin-bottom:10px;">
+      <option value="upload">📷 追加</option>
+      <option value="history">📋 履歴</option>
+      <option value="stats">📊 集計</option>
+    </select>
+
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">履歴の初期表示</div>
+    <select id="pref-history-view" onchange="onPrefChange('historyView', this.value)" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:9px 10px; color:var(--text); font-size:13px; font-family:inherit; outline:none; appearance:none; cursor:pointer; margin-bottom:10px;">
+      <option value="cal">📅 カレンダー</option>
+      <option value="list">☰ リスト</option>
+    </select>
+
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">レシート画像の選び方</div>
+    <select id="pref-camera" onchange="onPrefChange('cameraMode', this.value)" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:9px 10px; color:var(--text); font-size:13px; font-family:inherit; outline:none; appearance:none; cursor:pointer; margin-bottom:10px;">
+      <option value="camera">タップで撮影／長押しでファイル</option>
+      <option value="gallery">タップでファイル／長押しで撮影</option>
+    </select>
+
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">バックアップの催促</div>
+    <select id="pref-backup-days" onchange="onPrefChange('backupDays', this.value)" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:9px 10px; color:var(--text); font-size:13px; font-family:inherit; outline:none; appearance:none; cursor:pointer; margin-bottom:10px;">
+      <option value="7">7日以上未実施で警告</option>
+      <option value="14">14日以上未実施で警告</option>
+      <option value="30">30日以上未実施で警告</option>
+      <option value="0">催促しない</option>
+    </select>
+
+    <button class="btn btn-secondary" onclick="resetPrefs()">動作設定を初期値に戻す</button>
+
     <div class="modal-label" style="margin-top:16px;">バージョン</div>
     <div id="version-info" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);">確認中...</div>
 
@@ -4397,11 +4453,99 @@ ${storeTypeNote}
 7. middle_category と small_category は必ず上記定義の文字列をそのまま使うこと（独自の文字列を作らない）`;
 }
 
+// ===== 動作設定（カスタマイズ） =====
+// localStorage に1つのJSONとして保持する。
+// 項目を増やすときは PREF_DEFAULTS に追加するだけでよい。
+const PREFS_KEY = 'app_prefs';
+const PREF_DEFAULTS = {
+  autosaveSec: 10,      // 0 = 自動保存しない
+  soundMode: 'all',     // 'all' | 'save' | 'off'
+  soundVolume: 1,       // 音量倍率
+  startTab: 'upload',   // 'upload' | 'history' | 'stats'
+  historyView: 'cal',   // 'cal' | 'list'
+  cameraMode: 'camera', // 'camera' | 'gallery'
+  backupDays: 14,       // 0 = 催促しない
+};
+let _prefs = null;
+
+function loadPrefs() {
+  if (_prefs) return _prefs;
+  let stored = {};
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (raw) stored = JSON.parse(raw) || {};
+  } catch (e) { stored = {}; }
+  _prefs = Object.assign({}, PREF_DEFAULTS, stored);
+  return _prefs;
+}
+
+function getPref(key) {
+  const v = loadPrefs()[key];
+  return v === undefined ? PREF_DEFAULTS[key] : v;
+}
+
+function setPref(key, value) {
+  loadPrefs();
+  _prefs[key] = value;
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(_prefs)); } catch (e) {}
+}
+
+// 数値で持つものは select の文字列を変換してから保存する
+const _PREF_NUMERIC = ['autosaveSec', 'soundVolume', 'backupDays'];
+
+function onPrefChange(key, value) {
+  setPref(key, _PREF_NUMERIC.includes(key) ? Number(value) : value);
+  applyPrefsImmediate();
+  // 変更が分かるように音でフィードバックする
+  if (key === 'soundMode' || key === 'soundVolume') playCountdownTick(2);
+}
+
+function resetPrefs() {
+  _prefs = Object.assign({}, PREF_DEFAULTS);
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(_prefs)); } catch (e) {}
+  renderPrefsUI();
+  applyPrefsImmediate();
+}
+
+// select の選択状態を現在の設定に合わせる
+function renderPrefsUI() {
+  const map = {
+    'pref-autosave':      'autosaveSec',
+    'pref-sound':         'soundMode',
+    'pref-volume':        'soundVolume',
+    'pref-start-tab':     'startTab',
+    'pref-history-view':  'historyView',
+    'pref-camera':        'cameraMode',
+    'pref-backup-days':   'backupDays',
+  };
+  Object.keys(map).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = String(getPref(map[id]));
+  });
+}
+
+// 値を変えた瞬間に反映できるものを適用する
+function applyPrefsImmediate() {
+  updateDataSafetyBanner();          // 催促日数の変更を即反映
+  updateUploadLabelByPref();         // タップ／長押しの説明文を差し替え
+}
+
+// アップロードゾーンの説明文を設定に合わせる
+function updateUploadLabelByPref() {
+  const isCam = getPref('cameraMode') !== 'gallery';
+  const label = document.querySelector('#upload-zone .upload-label');
+  const sub   = document.querySelector('#upload-zone .upload-sublabel');
+  if (label) label.textContent = isCam ? 'タップして撮影' : 'タップしてファイルから選択';
+  if (sub)   sub.textContent   = isCam
+    ? '長押しでファイルから選択／JPG・PNG対応'
+    : '長押しで撮影／JPG・PNG対応';
+}
+
 // ===== バージョン情報 =====
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-03 22:08';
+const APP_BUILD = '2026-09-03 22:30';
 
 function _extractBuild(text) {
   const m = text.match(/APP_BUILD\s*=\s*'([^']+)'/);
@@ -4458,6 +4602,7 @@ function openSettings() {
   updateExportStatus();
   updateDeleteLockStatus();
   renderEnvCheck();
+  renderPrefsUI();
   renderVersionInfo();
   _updateThemeBtns();
   document.getElementById('settings-modal').classList.add('open');
@@ -4547,7 +4692,8 @@ async function requestPersistentStorage() {
 // ===== データ保全（永続化状態＋バックアップ催促） =====
 const BACKUP_AT_KEY      = 'last_backup_at';
 const BACKUP_COUNT_KEY   = 'last_backup_count';
-const BACKUP_DAYS_LIMIT  = 14; // これ以上バックアップしていなければ催促
+// 催促までの日数は設定画面から変更できる（0なら催促しない）
+function backupDaysLimit() { return Number(getPref('backupDays')) || 0; }
 const BACKUP_COUNT_LIMIT = 20; // 前回バックアップからこれ以上増えたら催促
 const BANNER_SNOOZE_KEY  = 'data_safety_banner_snoozed_at';
 const BANNER_SNOOZE_DAYS = 7;  // 「閉じる」を押してから再表示しない日数
@@ -4616,8 +4762,9 @@ async function updateDataSafetyBanner() {
 
   const { at, count, days } = getBackupInfo();
   const unsaved = (total !== null && count !== null) ? Math.max(0, total - count) : null;
-  const backupStale = (total !== null && total > 0) && (
-    at === null || days >= BACKUP_DAYS_LIMIT || (unsaved !== null && unsaved >= BACKUP_COUNT_LIMIT)
+  const limit = backupDaysLimit();
+  const backupStale = (limit > 0) && (total !== null && total > 0) && (
+    at === null || days >= limit || (unsaved !== null && unsaved >= BACKUP_COUNT_LIMIT)
   );
 
   const msgs = [];
@@ -4674,7 +4821,8 @@ async function renderEnvCheck() {
 
   const { at, days } = getBackupInfo();
   if (at) {
-    rows.push(`${mark(days < BACKUP_DAYS_LIMIT)} 最終バックアップ：${at.getFullYear()}/${at.getMonth()+1}/${at.getDate()}（${days}日前）`);
+    const limit = backupDaysLimit();
+    rows.push(`${mark(limit === 0 || days < limit)} 最終バックアップ：${at.getFullYear()}/${at.getMonth()+1}/${at.getDate()}（${days}日前）`);
   } else {
     rows.push(`${mark(false)} 最終バックアップ：まだ実施していません`);
   }
@@ -5311,8 +5459,8 @@ function renderResult(data) {
   scheduleAutoSave();
 }
 
-// ===== 自動保存（解析結果を AUTOSAVE_SECONDS 秒間さわらなければ保存） =====
-const AUTOSAVE_SECONDS = 10;
+// ===== 自動保存（解析結果を一定時間さわらなければ保存） =====
+// 秒数は設定画面から変更できる（0なら自動保存しない）
 let _autoSaveTick = null;     // setInterval のID
 let _autoSaveLeft = 0;        // 残り秒
 let _autoSaveStopped = false; // ユーザーがトーストをタップして止めたか（次の写真までON）
@@ -5348,7 +5496,9 @@ function scheduleAutoSave() {
   const pv = document.getElementById('result-preview');
   if (!pv || pv.style.display === 'none') return;
 
-  _autoSaveLeft = AUTOSAVE_SECONDS;
+  const sec = Number(getPref('autosaveSec')) || 0;
+  if (sec <= 0) return; // 設定で自動保存を切っている
+  _autoSaveLeft = sec;
   renderAutoSaveToast();
   _autoSaveTick = setInterval(() => {
     _autoSaveLeft--;
@@ -5401,6 +5551,8 @@ function resetAutoSaveState() {
 //   - オクターブ上の倍音を薄く重ねて柔らかな響きにする
 function _playNotes(notes) {
   try {
+    if (getPref('soundMode') === 'off') return;
+    const volScale = Number(getPref('soundVolume')) || 1;
     const actx = new (window.AudioContext || window.webkitAudioContext)();
     const now = actx.currentTime;
     let last = 0;
@@ -5423,7 +5575,7 @@ function _playNotes(notes) {
     notes.forEach(n => {
       const t0 = now + (n.at || 0);
       const dur = n.d || 0.4;
-      const vol = n.vol == null ? 0.25 : n.vol;
+      const vol = (n.vol == null ? 0.25 : n.vol) * volScale;
       const atk = n.atk == null ? 0.012 : n.atk;
       voice(n.f, t0, dur, vol, atk);
       if (n.harm) voice(n.f * 2, t0, dur * 0.6, vol * n.harm, atk);
@@ -5437,6 +5589,7 @@ function _playNotes(notes) {
 // 自動保存の残り3・2・1秒で鳴らす柔らかい音
 // E メジャーの和音を順に上げ、保存時の E6 へ自然につなげる
 function playCountdownTick(left) {
+  if (getPref('soundMode') !== 'all') return; // カウント音を切っている
   const table = { 3: 329.63, 2: 415.30, 1: 493.88 }; // E4 / G#4 / B4
   const f = table[left] || 329.63;
   _playNotes([{ f, d: 0.42, vol: 0.20, atk: 0.018, harm: 0.10 }]);
@@ -5776,7 +5929,7 @@ async function loadHistory() {
 let _calYear = 0;
 let _calMonth = 0; // 0-indexed
 let _calRecords = [];
-let _historyView = 'cal'; // 'list' | 'cal'
+let _historyView = 'cal'; // 'list' | 'cal'（起動時に設定で上書き）
 
 function switchHistoryView(mode) {
   _historyView = mode;
@@ -8786,7 +8939,23 @@ async function initApp(isResume) {
   }
 }
 
-(async () => { await initApp(false); })();
+// 履歴の初期表示を設定に合わせる（ここでは表示切り替えのみで読み込みはしない。
+// 読み込みは switchTab('history') が _historyView を見て行う）
+(function () {
+  _historyView = getPref('historyView') === 'list' ? 'list' : 'cal';
+  const isList = _historyView === 'list';
+  document.getElementById('view-btn-list').classList.toggle('active', isList);
+  document.getElementById('view-btn-cal').classList.toggle('active', !isList);
+  document.getElementById('history-list-body').style.display = isList ? 'block' : 'none';
+  document.getElementById('history-cal-body').style.display  = isList ? 'none' : 'block';
+})();
+
+(async () => {
+  await initApp(false);
+  // 起動時に開くタブ（DB接続完了後に切り替える）
+  const startTab = getPref('startTab');
+  if (startTab === 'history' || startTab === 'stats') switchTab(startTab);
+})();
 
 // 年間ボタンの初期ラベルを今年に設定
 document.getElementById('period-yearly').textContent = `${yearlyYear}年`;
@@ -8801,11 +8970,20 @@ document.getElementById('period-yearly').textContent = `${yearlyYear}年`;
 document.getElementById('file-input').addEventListener('click', showUserToast);
 
 // 通常モード：長押しで「ファイルから選択」を有効化
-setupLongPressPicker(
-  document.getElementById('upload-zone'),
-  document.getElementById('file-input'),
-  document.getElementById('file-input-gallery')
-);
+// 設定に従って「タップ側」と「長押し側」を入れ替える。
+// タップ側はゾーン全面を覆う input（#file-input）なので、
+// capture 属性を付け外しして役割を入れ替える。
+(function () {
+  const zone = document.getElementById('upload-zone');
+  const tapInput  = document.getElementById('file-input');
+  const longInput = document.getElementById('file-input-gallery');
+  if (getPref('cameraMode') === 'gallery') {
+    tapInput.removeAttribute('capture');       // タップ＝ファイル選択
+    longInput.setAttribute('capture', 'environment'); // 長押し＝撮影
+  }
+  setupLongPressPicker(zone, tapInput, longInput);
+  updateUploadLabelByPref();
+})();
 
 // アプリをバックグラウンドから復帰したとき（タブ切り替え・スリープ解除など）
 document.addEventListener('visibilitychange', async () => {
