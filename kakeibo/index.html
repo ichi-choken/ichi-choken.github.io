@@ -1652,6 +1652,10 @@
         </div>
       </div>
 
+      <!-- 複数商品をまとめて登録するための追加ボタン -->
+      <button id="manual-add-item-btn" onclick="addManualItem()"
+        style="width:100%;margin-bottom:12px;background:none;border:1px dashed var(--border);color:var(--text-dim);font-size:12px;padding:8px;border-radius:6px;cursor:pointer;font-family:inherit;">＋ 商品を追加</button>
+
       <!-- 店舗名 -->
       <div id="manual-store-area" style="margin-bottom:12px;">
         <div class="modal-label" style="margin-bottom:4px;">店舗名<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（オプション）</span></div>
@@ -9557,8 +9561,14 @@ function _updateManualCatImportHint() {
 }
 
 function addManualItem() {
-  const name = document.getElementById('manual-item-name').value.trim();
-  const price = parseInt(document.getElementById('manual-item-price').value) || 0;
+  const nameEl = document.getElementById('manual-item-name');
+  const priceEl = document.getElementById('manual-item-price');
+  const name = nameEl.value.trim();
+  const priceRaw = priceEl.value.trim();
+  const price = parseInt(priceRaw) || 0;
+
+  // メモも金額も未入力のときは積まない（空アイテムの混入防止）
+  if (!name && !priceRaw) return false;
 
 
   // 中カテゴリ：ドロップダウンで選ばれた値を優先して使う
@@ -9579,10 +9589,11 @@ function addManualItem() {
     small_category: '',
     price
   });
-  document.getElementById('manual-item-name').value = '';
-  document.getElementById('manual-item-price').value = '';
+  nameEl.value = '';
+  priceEl.value = '';
   renderManualItems();
-  document.getElementById('manual-item-name').focus();
+  nameEl.focus();
+  return true;
 }
 
 function deleteManualItem(idx) {
@@ -9616,8 +9627,13 @@ function renderManualItems() {
 
 async function saveManualReceipt() {
   if (!getCurrentUser()) { openUserModalWithHistory(); return; }
-  // プラスボタンがないので保存時に自動追加
+  // 入力欄に書きかけの1件があれば取り込む
+  //（「＋ 商品を追加」で積んだ分は manualItems に保持されている）
   addManualItem();
+  if (manualItems.length === 0) {
+    showManualStatus('error', 'メモか金額を入力してください');
+    return;
+  }
   let store = document.getElementById('manual-store').value.trim();
 
   if (_manualEntryType === 'income') {
