@@ -2061,7 +2061,7 @@
 
   <!-- 小カテゴリ選択時のレシート一覧 -->
   <div id="stats-receipt-list-section" style="display:none;">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 16px;margin-bottom:8px;"><div class="section-title" id="stats-receipt-list-title" style="margin-bottom:0;"></div><div id="stats-receipt-list-total" style="font-family:'Space Mono',monospace;font-size:14px;color:var(--accent);white-space:nowrap;margin-left:8px;"></div></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 16px;margin-bottom:8px;"><div class="section-title" id="stats-receipt-list-title" style="margin-bottom:0;"></div><div style="display:flex;align-items:center;gap:6px;margin-left:8px;"><button id="stats-list-recat-btn" class="recat-btn" title="表示中のレシートを一括再カテゴライズ" style="display:none;font-size:17px;" onclick="bulkRecatStatsList()">🔄</button><div id="stats-receipt-list-total" style="font-family:'Space Mono',monospace;font-size:14px;color:var(--accent);white-space:nowrap;"></div></div></div>
     <div style="padding: 0 16px 16px;">
       <ul class="history-list" id="stats-receipt-list"></ul>
     </div>
@@ -8148,7 +8148,7 @@ async function renderStoreReceipts(storeName, records) {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">🔄</button>
             <div class="history-total">¥${effectiveTotal(r).toLocaleString()}</div>
           </div>
           <div class="history-count">${(r.items || []).length}点</div>
@@ -8390,7 +8390,7 @@ async function renderLargeDrillReceipts(large, midIdToLarge, records) {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">🔄</button>
             <div class="history-total">¥${Math.ceil(matchTotal).toLocaleString()}</div>
           </div>
           <div class="history-count">${matchItems.length}点</div>
@@ -8452,7 +8452,7 @@ async function renderMiddleDrillReceipts(middle, records) {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">🔄</button>
             <div class="history-total">¥${Math.ceil(matchTotal).toLocaleString()}</div>
           </div>
           <div class="history-count">${matchItems.length}点</div>
@@ -8516,7 +8516,7 @@ async function renderSmallDrillReceipts(middle, small) {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">🔄</button>
             <div class="history-total">¥${Math.ceil(matchTotal).toLocaleString()}</div>
           </div>
           <div class="history-count">${matchItems.length}点</div>
@@ -9478,6 +9478,71 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
   } finally {
     recatActiveCount--;
   }
+}
+
+// ===== 統計リストの表示中レシートを一括再カテゴライズ =====
+function _statsListRecatTargets() {
+  return Array.from(document.querySelectorAll('#stats-receipt-list .recat-btn[data-rid]'));
+}
+
+function _updateStatsListRecatBtn() {
+  const btn = document.getElementById('stats-list-recat-btn');
+  if (!btn || btn.dataset.busy === '1') return;
+  const n = _statsListRecatTargets().length;
+  btn.style.display = n > 0 ? '' : 'none';
+  btn.textContent = '\u{1F504}';
+  btn.style.fontSize = '17px';
+  btn.disabled = false;
+  btn.classList.remove('spinning');
+  btn.title = n > 0 ? `表示中の${n}件を一括再カテゴライズ` : '表示中のレシートを一括再カテゴライズ';
+}
+
+async function bulkRecatStatsList() {
+  const btn = document.getElementById('stats-list-recat-btn');
+  if (!btn || btn.dataset.busy === '1') return;
+
+  const apiKey = localStorage.getItem('gemini_api_key');
+  if (!apiKey) { openSettingsWithHistory(); return; }
+
+  const targets = _statsListRecatTargets();
+  if (targets.length === 0) return;
+  if (!confirm(`表示中の${targets.length}件を再カテゴライズします。よろしいですか？`)) return;
+
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  btn.style.fontSize = '13px';
+
+  let done = 0;
+  btn.textContent = `0/${targets.length}`;
+  for (const t of targets) {
+    const id = Number(t.dataset.rid);
+    if (!Number.isFinite(id)) { done++; continue; }
+    t.classList.remove('error');
+    delete t.dataset.errorMsg;
+    await recategorizeReceipt(id, t).catch(() => {});
+    done++;
+    btn.textContent = `${done}/${targets.length}`;
+  }
+
+  btn.textContent = '\u2705';
+  btn.style.fontSize = '17px';
+  setTimeout(() => {
+    delete btn.dataset.busy;
+    _updateStatsListRecatBtn();
+  }, 1500);
+}
+
+function _initStatsListRecatObserver() {
+  const listEl = document.getElementById('stats-receipt-list');
+  if (!listEl) return;
+  new MutationObserver(() => _updateStatsListRecatBtn())
+    .observe(listEl, { childList: true, subtree: true });
+  _updateStatsListRecatBtn();
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initStatsListRecatObserver);
+} else {
+  _initStatsListRecatObserver();
 }
 
 // ===== 一括再カテゴライズ =====
