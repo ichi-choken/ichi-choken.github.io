@@ -4719,7 +4719,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-08 18:40';
+const APP_BUILD = '2026-09-09 01:45';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -4966,14 +4966,14 @@ async function updateDataSafetyBanner() {
       ? 'まだ一度もバックアップしていません。'
       : `前回のバックアップから${days}日${(unsaved !== null && unsaved > 0) ? `、未保存 ${unsaved} 件` : ''}です。`;
     msgs.push('<b>📤 バックアップをおすすめします</b><br>' + detail
-      + ' 設定画面の「エクスポート」からJSONを保存してください。');
+      + ' ユーザー設定の「エクスポート」からJSONを保存してください。');
   }
 
   if (msgs.length === 0) { el.style.display = 'none'; return; }
 
   el.innerHTML = msgs.map(m => `<div style="margin-bottom:6px;">${m}</div>`).join('')
     + '<div style="display:flex; gap:8px; margin-top:8px;">'
-    + '<button onclick="openSettingsWithHistory()" style="flex:1;padding:6px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--btn-on-accent,#111);font-size:12px;font-family:inherit;font-weight:700;cursor:pointer;">設定を開く</button>'
+    + '<button onclick="openUserModalWithHistory()" style="flex:1;padding:6px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--btn-on-accent,#111);font-size:12px;font-family:inherit;font-weight:700;cursor:pointer;">ユーザー設定を開く</button>'
     + `<button onclick="snoozeDataSafetyBanner()" style="flex:1;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-size:12px;font-family:inherit;cursor:pointer;">閉じる（${BANNER_SNOOZE_DAYS}日間）</button>`
     + '</div>';
   el.style.display = 'block';
