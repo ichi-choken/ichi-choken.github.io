@@ -190,6 +190,42 @@
     font-size: 15px;
   }
 
+  /* 初期セットアップの案内。モーダルより手前に出すが、
+     pointer-events: none にして下のユーザー追加・APIキー入力の操作を妨げない */
+  #onboard-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    width: calc(100% - 32px);
+    max-width: 420px;
+    box-sizing: border-box;
+    background: #1f2933;
+    color: #fff;
+    border: 1px solid var(--accent);
+    font-size: 13px;
+    line-height: 1.6;
+    font-family: 'Noto Sans JP', sans-serif;
+    padding: 12px 16px;
+    border-radius: 12px;
+    text-align: center;
+    z-index: 10001;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  #onboard-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  #onboard-toast .onboard-sub {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    opacity: 0.75;
+  }
+
   body {
     font-family: 'Noto Sans JP', sans-serif;
     background: var(--bg);
@@ -491,12 +527,40 @@
     padding: 20px;
     width: calc(100% - 32px);
     max-width: 420px;
+    position: relative; /* 右上の✕ボタンの基準 */
   }
   .modal-title {
     font-size: 15px;
     font-weight: 700;
     margin-bottom: 14px;
     color: var(--accent);
+  }
+  /* 直下のタイトルだけ✕ぶんの余白を空ける（エディタ類の入れ子タイトルは対象外） */
+  .modal > .modal-title { padding-right: 34px; }
+  /* 全モーダル共通：右上角の閉じるボタン */
+  .modal-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--text-dim);
+    font-size: 15px;
+    line-height: 1;
+    font-family: inherit;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .modal-close:active {
+    background: var(--border);
+    color: var(--text);
   }
   .modal-label {
     font-size: 12px;
@@ -1483,6 +1547,9 @@
 <!-- 自動保存カウントダウントースト（タップで停止） -->
 <div id="autosave-toast" onclick="stopAutoSaveByUser()"></div>
 
+<!-- 初期セットアップ案内トースト（ユーザー追加 / APIキー保存の促し） -->
+<div id="onboard-toast"></div>
+
 <!-- ヘッダー -->
 <div class="header">
   <h1>家計簿</h1>
@@ -1504,6 +1571,7 @@
 <!-- ユーザーモーダル -->
 <div class="modal-overlay" id="user-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('user-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title">👤 ユーザー切り替え</div>
     <ul class="user-list" id="user-list"></ul>
     <div style="border-top:1px solid var(--border); padding-top:12px;">
@@ -1529,6 +1597,7 @@
 <!-- ユーザー削除ロック：認証モーダル -->
 <div class="modal-overlay" id="delete-auth-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="cancelDeleteAuth()" aria-label="閉じる">✕</button>
     <div class="modal-title">🔒 削除の確認</div>
     <div id="delete-auth-target" style="font-size:13px;color:var(--text-dim);margin-bottom:12px;"></div>
 
@@ -1556,6 +1625,7 @@
 <!-- ユーザー削除ロック：設定モーダル -->
 <div class="modal-overlay" id="delete-lock-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('delete-lock-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title">🔒 ユーザー削除ロック</div>
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
       ユーザー削除は取り消せないため、実行前に本人確認を求めます。
@@ -1958,6 +2028,7 @@
   <!-- 年月選択モーダル -->
   <div class="modal-overlay" id="yearmonth-modal">
     <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('yearmonth-modal')" aria-label="閉じる">✕</button>
       <div class="modal-title">📅 月を選択</div>
       <div class="modal-label">年</div>
       <select id="ym-year"></select>
@@ -1978,6 +2049,7 @@
   <!-- 年間選択モーダル -->
   <div class="modal-overlay" id="yearly-modal">
     <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('yearly-modal')" aria-label="閉じる">✕</button>
       <div class="modal-title">📆 年を選択</div>
       <div class="modal-label">年</div>
       <select id="yearly-year"></select>
@@ -1989,6 +2061,7 @@
   <!-- カスタム期間モーダル -->
   <div class="modal-overlay" id="custom-period-modal">
     <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('custom-period-modal')" aria-label="閉じる">✕</button>
       <div class="modal-title">🗓 期間を指定</div>
       <div class="modal-label">開始日</div>
       <input type="date" id="custom-from" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
@@ -2102,6 +2175,7 @@
 <!-- レシート編集モーダル -->
 <div class="modal-overlay" id="receipt-edit-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('receipt-edit-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title">✏️ レシート情報を編集</div>
     <!-- 通常：店舗名テキスト -->
     <div id="edit-store-text-row">
@@ -2125,6 +2199,7 @@
 <!-- 商品編集モーダル -->
 <div class="modal-overlay" id="item-edit-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('item-edit-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title">✏️ 商品を編集</div>
     <div class="modal-label">商品名</div>
     <input type="text" id="edit-item-name" placeholder="商品名">
@@ -2150,6 +2225,7 @@
 <!-- 設定モーダル -->
 <div class="modal-overlay" id="settings-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeSettings()" aria-label="閉じる">✕</button>
     <div class="modal-title">⚙ 設定</div>
 
     <div class="modal-label">テーマ</div>
@@ -2180,17 +2256,17 @@
     </select>
     <div id="model-saved-msg" style="font-size:12px; color:var(--accent); margin-top:6px; min-height:16px;"></div>
 
-    <div class="modal-label" style="margin-top:16px;">店カテゴリ管理</div>
-    <div id="store-def-status" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);">読み込み中...</div>
-    <button class="btn btn-secondary" onclick="openStoreEditorFromSettings()">🏪 店カテゴリを編集</button>
+    <div class="modal-label" style="margin-top:16px;">商品カテゴリ管理</div>
+    <div id="category-status" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);">読み込み中...</div>
+    <button class="btn btn-secondary" onclick="openLargeEditorFromSettings()">🗂 商品カテゴリを編集</button>
 
     <div class="modal-label" style="margin-top:12px;">収入カテゴリ管理</div>
     <div id="income-cat-status" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);"></div>
     <button class="btn btn-secondary" onclick="openIncomeCatEditorFromSettings()">💰 収入カテゴリを編集</button>
 
-    <div class="modal-label" style="margin-top:12px;">商品カテゴリ管理</div>
-    <div id="category-status" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);">読み込み中...</div>
-    <button class="btn btn-secondary" onclick="openLargeEditorFromSettings()">🗂 商品カテゴリを編集</button>
+    <div class="modal-label" style="margin-top:12px;">店カテゴリ管理</div>
+    <div id="store-def-status" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);">読み込み中...</div>
+    <button class="btn btn-secondary" onclick="openStoreEditorFromSettings()">🏪 店カテゴリを編集</button>
 
     <div class="modal-label" style="margin-top:12px;">ユーザー削除ロック</div>
     <div id="delete-lock-status" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);"></div>
@@ -2268,7 +2344,7 @@
   <div class="modal" style="width:calc(100% - 32px); max-width:480px; margin:16px auto; max-height:none;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <div class="modal-title" style="margin-bottom:0;">💰 収入カテゴリ編集</div>
-      <button class="settings-btn" onclick="closeIncomeCatEditor()">✕ 閉じる</button>
+      <button type="button" class="modal-close" onclick="closeIncomeCatEditor()" aria-label="閉じる">✕</button>
     </div>
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;">手入力フォームの「収入」選択時に表示されるカテゴリ一覧を管理します。</p>
     <div id="income-cat-list-ui" style="margin-bottom:16px;"></div>
@@ -2285,6 +2361,7 @@
 <!-- 収入カテゴリ名 変更モーダル -->
 <div class="modal-overlay" id="income-cat-edit-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('income-cat-edit-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title">✏️ 収入カテゴリ名を変更</div>
     <div class="modal-label">カテゴリ名</div>
     <input type="text" id="income-cat-edit-input" placeholder="例：奨学金">
@@ -2301,7 +2378,7 @@
   <div class="modal" style="width:calc(100% - 32px); max-width:480px; margin:16px auto; max-height:none;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <div class="modal-title" style="margin-bottom:0;">🗂 商品カテゴリ編集</div>
-      <button class="settings-btn" onclick="closeLargeEditor()">✕ 閉じる</button>
+      <button type="button" class="modal-close" onclick="closeLargeEditor()" aria-label="閉じる">✕</button>
     </div>
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">大カテゴリの追加・編集・削除ができます。中カテゴリをタップすると小カテゴリが展開されます。↔ で大カテゴリ割り当てを変更できます。</p>
     <!-- 追加・インポート -->
@@ -2326,6 +2403,7 @@
 <!-- 大カテゴリ追加/編集モーダル -->
 <div class="modal-overlay" id="add-large-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('add-large-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title" id="add-large-title">＋ 大カテゴリ追加</div>
     <div class="modal-label">大カテゴリ名</div>
     <input type="text" id="add-large-input" placeholder="例：食品">
@@ -2337,6 +2415,7 @@
 <!-- 大中エディタ：中カテゴリ追加モーダル -->
 <div class="modal-overlay" id="add-middle-to-large-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('add-middle-to-large-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title">＋ 中カテゴリ追加</div>
     <div class="modal-label">中カテゴリ名</div>
     <input type="text" id="add-middle-to-large-input" placeholder="例：乳製品">
@@ -2350,6 +2429,7 @@
 <!-- 大中エディタ：中カテゴリ割り当て変更モーダル -->
 <div class="modal-overlay" id="move-middle-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('move-middle-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title">↔ 大カテゴリの割り当て</div>
     <div class="modal-label" id="move-middle-name-label">中カテゴリ：—</div>
     <div class="modal-label" style="margin-top:12px;">所属させる大カテゴリ（複数選択可）</div>
@@ -2364,7 +2444,7 @@
   <div class="modal" style="width:calc(100% - 32px); max-width:480px; margin:16px auto; max-height:none;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <div class="modal-title" style="margin-bottom:0;">🏪 店カテゴリ編集</div>
-      <button class="settings-btn" onclick="closeStoreEditor()">✕ 閉じる</button>
+      <button type="button" class="modal-close" onclick="closeStoreEditor()" aria-label="閉じる">✕</button>
     </div>
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">レシート保存時に店名が自動登録されます。手動で追加・編集・削除もできます。</p>
     <button class="btn btn-primary" style="margin-top:0; margin-bottom:8px; padding:8px; font-size:12px;" onclick="openAddStoreModal()">＋ 店を追加</button>
@@ -2384,6 +2464,7 @@
 <!-- 店カテゴリ追加/編集モーダル -->
 <div class="modal-overlay" id="add-store-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('add-store-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title" id="add-store-title">＋ 店を追加</div>
     <div class="modal-label">店名</div>
     <input type="text" id="add-store-input" placeholder="例：アピタ">
@@ -2395,6 +2476,7 @@
 <!-- 中カテゴリ追加/編集モーダル -->
 <div class="modal-overlay" id="add-middle-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('add-middle-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title" id="add-middle-title">＋ 中カテゴリ追加</div>
     <div class="modal-label">中カテゴリ名</div>
     <input type="text" id="add-middle-input" placeholder="例：乳製品">
@@ -2406,6 +2488,7 @@
 <!-- 小カテゴリ追加/編集モーダル -->
 <div class="modal-overlay" id="add-small-modal">
   <div class="modal">
+    <button type="button" class="modal-close" onclick="closeModal('add-small-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title" id="add-small-title">＋ 小カテゴリ追加</div>
     <div class="modal-label" id="add-small-parent-label">中カテゴリ：—</div>
     <input type="text" id="add-small-input" placeholder="例：牛乳">
@@ -2563,7 +2646,11 @@ async function addUser() {
   users.push(name);
   saveUsers(users);
   input.value = '';
+  hideOnboardToast();
   await switchUser(name);
+  // 追加が終わるとユーザーモーダルは閉じる。APIキーが未保存ならそのまま設定へ案内する。
+  // switchUser 内の history.back() が処理されるのを待ってから開く。
+  if (!hasApiKey()) setTimeout(promptApiKey, 400);
 }
 
 async function switchUser(name) {
@@ -2593,6 +2680,50 @@ async function switchUser(name) {
   try { await loadHistory(); } catch (_) {}
   if (document.getElementById('tab-stats').classList.contains('active')) loadStats();
   showStatus('success', `${name} に切り替えました`);
+}
+
+// ===== 初期セットアップの促し（ユーザー追加 → APIキー保存） =====
+// 方針：未設定のものだけを順に案内する。ユーザーが未登録なら必ずユーザー追加から始め、
+// ユーザーがいてAPIキーだけ無い場合はAPIキーの案内から始める。
+// 案内は画面下部のトーストで出すだけなので操作を妨げず、「閉じる」でいつでも中断できる。
+
+function hasAppUser() { return !!getCurrentUser(); }
+function hasApiKey()  { return !!localStorage.getItem('gemini_api_key'); }
+
+// 案内は画面下部のトースト。履歴スタックには積まず、
+// 対象の操作が完了するか、案内元のモーダルを閉じた時点で自動的に消える。
+function showOnboardToast(main, sub) {
+  const el = document.getElementById('onboard-toast');
+  if (!el) return;
+  el.innerHTML = `${main}<span class="onboard-sub">${sub}</span>`;
+  el.classList.add('show');
+}
+
+function hideOnboardToast() {
+  const el = document.getElementById('onboard-toast');
+  if (el) el.classList.remove('show');
+}
+
+function promptAddUser() {
+  openUserModalWithHistory();
+  setTimeout(() => showOnboardToast(
+    '👤 ユーザーを追加してください',
+    '「新しいユーザーを追加」に名前を入力して「追加」'
+  ), 300);
+}
+
+function promptApiKey() {
+  openSettingsWithHistory();
+  setTimeout(() => showOnboardToast(
+    '🔑 APIキーを保存してください',
+    'レシート解析には Gemini の APIキーが必要です'
+  ), 300);
+}
+
+// セットアップが未完了なら案内する共通の入口。すべて設定済みなら何もしない。
+function promptSetup() {
+  if (!hasAppUser()) { promptAddUser(); return; }
+  if (!hasApiKey())  { promptApiKey();  return; }
 }
 
 // ===== ユーザー削除ロック =====
@@ -2940,8 +3071,12 @@ async function dbAdd(storeName, data) {
   });
 }
 
+// レシートを書き換えたら立つフラグ。詳細ビューを閉じたときに裏の一覧を描き直すために使う。
+let _receiptsDirty = false;
+
 async function dbPut(storeName, data) {
   const d = await ensureDB();
+  if (storeName === 'receipts') _receiptsDirty = true;
   return new Promise((resolve, reject) => {
     const tx = d.transaction(storeName, 'readwrite');
     const req = tx.objectStore(storeName).put(data);
@@ -2952,6 +3087,7 @@ async function dbPut(storeName, data) {
 
 async function dbDelete(storeName, id) {
   const d = await ensureDB();
+  if (storeName === 'receipts') _receiptsDirty = true;
   return new Promise((resolve, reject) => {
     const tx = d.transaction(storeName, 'readwrite');
     const req = tx.objectStore(storeName).delete(id);
@@ -5091,6 +5227,7 @@ function saveApiKey() {
   if (!key) { alert('APIキーを入力してください'); return; }
   localStorage.setItem('gemini_api_key', key);
   _saveSettingIDB('gemini_api_key', key);
+  hideOnboardToast();
   _skipNextCloseTopLayer = true;
   _closeSettingsInner();
   history.back(); // pushStateエントリを消費（閉じ処理は上で完了済み）
@@ -5286,9 +5423,9 @@ function renderMultiPreview() {
 
 // ===== Gemini 解析 =====
 async function analyzeReceipt() {
-  if (!getCurrentUser()) { openUserModalWithHistory(); return; }
+  if (!getCurrentUser()) { promptSetup(); return; }
   const apiKey = localStorage.getItem('gemini_api_key');
-  if (!apiKey) { openSettingsWithHistory(); return; }
+  if (!apiKey) { promptSetup(); return; }
   if (currentMode === 'single' && !selectedFile) return;
   if (currentMode === 'multi' && selectedFiles.length === 0) return;
 
@@ -6221,7 +6358,7 @@ function showCalDayPanel(dateStr, records) {
 
 async function calDayBulkRecat(records, bulkBtn) {
   const apiKey = localStorage.getItem('gemini_api_key');
-  if (!apiKey) { openSettingsWithHistory(); return; }
+  if (!apiKey) { promptSetup(); return; }
 
   // 手入力・手動カテゴライズ済みでも再カテゴライズできるようにする
   const targets = records.slice();
@@ -6321,6 +6458,8 @@ function _closeStatsDetailBase() {
   document.getElementById('stats-receipt-list-section').style.display = 'block';
   const section = document.getElementById('stats-receipt-list-section');
   setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  // 詳細で編集・削除していたら、裏の一覧が古いままなので描き直す
+  if (_receiptsDirty) { _receiptsDirty = false; _refreshStatsAfterEdit(); }
 }
 var closeStatsDetail = _closeStatsDetailBase;
 
@@ -6754,6 +6893,8 @@ function showHistoryList() {
 
 function _backFromDetailBase() {
   showHistoryList();
+  // 詳細で編集・削除していたら、履歴一覧が古いままなので読み直す
+  if (_receiptsDirty) { _receiptsDirty = false; loadHistory(); }
 }
 var backFromDetail = _backFromDetailBase;
 
@@ -7516,21 +7657,26 @@ function updateBalanceBar(records) {
   netEl.className = 'balance-value ' + (net >= 0 ? 'surplus' : 'deficit');
 }
 
-function renderStats(records) {
-  // 支出/収入フィルタ
-  if (currentStatType === 'income') {
-    records = records.filter(r => r.entry_type === 'income');
-  } else {
-    records = records.filter(r => !r.entry_type || r.entry_type === 'expense');
-  }
+// 支出/収入の種別フィルタ（renderStats と編集後の再集計で共用）
+function filterByStatType(records) {
+  return currentStatType === 'income'
+    ? records.filter(r => r.entry_type === 'income')
+    : records.filter(r => !r.entry_type || r.entry_type === 'expense');
+}
 
+// サマリー（合計・件数・点数）を更新し、対象商品の配列を返す
+function updateStatsSummary(records) {
   const allItems = records.flatMap(r => r.items || []);
-
-  // サマリー
   const total = records.reduce((s, r) => s + effectiveTotal(r), 0);
   document.getElementById('stats-total').textContent = '¥' + Math.abs(total).toLocaleString();
   document.getElementById('stats-count').textContent = records.length + '件';
   document.getElementById('stats-items').textContent = allItems.length + '点';
+  return allItems;
+}
+
+function renderStats(records) {
+  records = filterByStatType(records);
+  const allItems = updateStatsSummary(records);
 
   const empty = document.getElementById('stats-empty');
   const section = document.getElementById('stats-chart-section');
@@ -8539,6 +8685,71 @@ async function renderSmallDrillReceipts(middle, small) {
   section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// ===== 編集内容の即時反映（集計タブ） =====
+// 集計の一覧は「どの条件で開いたか」でしか再現できないため、
+// 直近の描画呼び出しを覚えておき、レコードだけ最新に差し替えて描き直す。
+let _statsListRerender = null;
+
+// 同じ絞り込み結果のまま、各レコードをDBの最新内容に差し替える（削除済みは除外）
+async function _refreshRecords(records) {
+  const all = await dbGetAll('receipts');
+  const byId = new Map(all.map(r => [r.id, r]));
+  return records.map(r => byId.get(r.id)).filter(Boolean);
+}
+
+// 内部でDBを読み直す描画関数（引数にレコードを取らない）
+const _origRenderIncomeCatReceipts_r = renderIncomeCatReceipts;
+renderIncomeCatReceipts = async function(catName) {
+  _statsListRerender = () => _origRenderIncomeCatReceipts_r(catName);
+  return _origRenderIncomeCatReceipts_r(catName);
+};
+
+const _origRenderSmallDrillReceipts_r = renderSmallDrillReceipts;
+renderSmallDrillReceipts = async function(middle, small) {
+  _statsListRerender = () => _origRenderSmallDrillReceipts_r(middle, small);
+  return _origRenderSmallDrillReceipts_r(middle, small);
+};
+
+// レコード配列を受け取る描画関数（再描画時に中身を最新へ差し替える）
+const _origRenderStoreReceipts_r = renderStoreReceipts;
+renderStoreReceipts = async function(storeName, records) {
+  _statsListRerender = async () => _origRenderStoreReceipts_r(storeName, await _refreshRecords(records));
+  return _origRenderStoreReceipts_r(storeName, records);
+};
+
+const _origRenderLargeDrillReceipts_r = renderLargeDrillReceipts;
+renderLargeDrillReceipts = async function(large, midIdToLarge, records) {
+  _statsListRerender = async () => _origRenderLargeDrillReceipts_r(large, midIdToLarge, await _refreshRecords(records));
+  return _origRenderLargeDrillReceipts_r(large, midIdToLarge, records);
+};
+
+const _origRenderMiddleDrillReceipts_r = renderMiddleDrillReceipts;
+renderMiddleDrillReceipts = async function(middle, records) {
+  _statsListRerender = async () => _origRenderMiddleDrillReceipts_r(middle, await _refreshRecords(records));
+  return _origRenderMiddleDrillReceipts_r(middle, records);
+};
+
+// 詳細ビューで編集・削除した内容を集計タブに反映する
+async function _refreshStatsAfterEdit() {
+  try {
+    const listOpen = document.getElementById('stats-receipt-list-section').style.display !== 'none';
+    const drilled  = !!(drillLarge || drillMiddle || currentIsDrill);
+    if (!listOpen && !drilled) {
+      // 最上位表示ならグラフごと描き直す
+      await loadStats();
+      return;
+    }
+    // ドリル中・一覧表示中は位置を保つため、サマリーと開いている一覧だけを更新する
+    const all = await dbGetAll('receipts');
+    const records = filterByPeriod(all, currentPeriod);
+    updateBalanceBar(records);
+    updateStatsSummary(filterByStatType(records));
+    if (_statsListRerender) await _statsListRerender();
+  } catch (e) {
+    console.warn('集計の再描画に失敗', e);
+  }
+}
+
 async function _drillUpBase() {
   await _drillUpInner();
 }
@@ -8582,9 +8793,12 @@ function _closeModalInner(id) {
   const el = document.getElementById(id);
   el.classList.remove('open');
   if (el.dataset.mode) delete el.dataset.mode;
+  // 案内元のモーダルを閉じたら案内トーストも下げる
+  if (id === 'user-modal') hideOnboardToast();
 }
 function _closeSettingsInner() {
   document.getElementById('settings-modal').classList.remove('open');
+  hideOnboardToast();
   if (document.getElementById('tab-stats').classList.contains('active')) {
     loadStats();
   }
@@ -8992,10 +9206,11 @@ async function initApp(isResume) {
       loadHistory();
       if (document.getElementById('tab-stats').classList.contains('active')) { initMonthPeriod(); loadStats(); }
     }
-  } else {
-    // ユーザー未選択ならユーザーモーダルを表示
-    if (!isResume) setTimeout(openUserModalWithHistory, 400);
   }
+
+  // 初期セットアップ（ユーザー追加 → APIキー保存）が未完了なら案内する。
+  // 復帰時は毎回出さない。
+  if (!isResume) setTimeout(promptSetup, 400);
 
   // ── URLトリガーによるエクスポート ──
   // 「…/#export」で開かれたら書き出す。自動判断ではなく、MacroDroid等からの
@@ -9251,7 +9466,7 @@ async function recategorizeReceipt(id, btn) {
   }
 
   const apiKey = localStorage.getItem('gemini_api_key');
-  if (!apiKey) { openSettingsWithHistory(); return; }
+  if (!apiKey) { promptSetup(); return; }
 
   // （手入力・手動カテゴライズ済みをブロックする判定は廃止し、どのレシートでも実行できる）
 
@@ -9502,7 +9717,7 @@ async function bulkRecatStatsList() {
   if (!btn || btn.dataset.busy === '1') return;
 
   const apiKey = localStorage.getItem('gemini_api_key');
-  if (!apiKey) { openSettingsWithHistory(); return; }
+  if (!apiKey) { promptSetup(); return; }
 
   const targets = _statsListRecatTargets();
   if (targets.length === 0) return;
@@ -9550,7 +9765,7 @@ let _bulkRecatCancelled = false;
 
 async function startBulkRecategorize() {
   const apiKey = localStorage.getItem('gemini_api_key');
-  if (!apiKey) { openSettingsWithHistory(); return; }
+  if (!apiKey) { promptSetup(); return; }
 
   const all = await dbGetAll('receipts');
   if (!all.length) { alert('レシートがありません'); return; }
@@ -10507,7 +10722,7 @@ function renderManualItems() {
 }
 
 async function saveManualReceipt() {
-  if (!getCurrentUser()) { openUserModalWithHistory(); return; }
+  if (!getCurrentUser()) { promptSetup(); return; }
   // 入力欄に書きかけの1件があれば取り込む
   //（「＋ 商品を追加」で積んだ分は manualItems に保持されている）
   addManualItem();
