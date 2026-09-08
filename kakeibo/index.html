@@ -1755,9 +1755,9 @@
         </div>
       </div>
 
-      <!-- メモ -->
+      <!-- 商品名 -->
       <div style="margin-bottom:12px;">
-        <div class="modal-label" style="margin-bottom:4px;">メモ</div>
+        <div class="modal-label" style="margin-bottom:4px;">商品名</div>
         <input type="text" id="manual-item-name" placeholder="" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
       </div>
 
@@ -4719,7 +4719,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-09 01:45';
+const APP_BUILD = '2026-09-09 01:50';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -10663,7 +10663,7 @@ function addManualItem() {
   const priceRaw = priceEl.value.trim();
   const price = parseInt(priceRaw) || 0;
 
-  // メモも金額も未入力のときは積まない（空アイテムの混入防止）
+  // 商品名も金額も未入力のときは積まない（空アイテムの混入防止）
   if (!name && !priceRaw) return false;
 
 
@@ -10709,7 +10709,7 @@ function renderManualItems() {
     li.className = 'manual-item-row';
     li.innerHTML = `
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;word-break:break-all;">${escHtml(item.name) || '<span style="color:var(--text-dim);">メモなし</span>'}</div>
+        <div style="font-size:13px;word-break:break-all;">${escHtml(item.name) || '<span style="color:var(--text-dim);">商品名なし</span>'}</div>
         <span class="item-cat">${escHtml(resolveCatLabel(item))}</span>
       </div>
       <span class="item-price" style="font-family:'Space Mono',monospace;white-space:nowrap;">¥${(item.price||0).toLocaleString()}</span>
@@ -10727,7 +10727,7 @@ async function saveManualReceipt() {
   //（「＋ 商品を追加」で積んだ分は manualItems に保持されている）
   addManualItem();
   if (manualItems.length === 0) {
-    showManualStatus('error', 'メモか金額を入力してください');
+    showManualStatus('error', '商品名か金額を入力してください');
     return;
   }
   let store = document.getElementById('manual-store').value.trim();
