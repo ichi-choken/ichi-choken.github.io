@@ -1210,6 +1210,35 @@
     display: none;
   }
   .chart-back-btn.visible { display: block; }
+  /* カテゴリ追跡：単価推移トグル（見出し右端） */
+  .track-unit-toggle {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 4px 10px 4px 6px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .track-unit-knob {
+    width: 22px; height: 12px; border-radius: 6px;
+    background: var(--surface2); border: 1px solid var(--border);
+    position: relative; transition: background 0.15s;
+  }
+  .track-unit-knob::after {
+    content: ''; position: absolute; top: 1px; left: 1px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-dim); transition: transform 0.15s;
+  }
+  .track-unit-toggle.active { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .track-unit-toggle.active .track-unit-knob { background: var(--accent); }
+  .track-unit-toggle.active .track-unit-knob::after { transform: translateX(10px); background: var(--surface); }
   .chart-back-btn:hover { border-color: var(--accent); color: var(--accent); }
   .chart-hint {
     font-size: 11px;
@@ -2122,7 +2151,11 @@
   <!-- カテゴリ追跡（追跡モード時のみ表示。折れ線グラフは段階3で実装） -->
   <div class="chart-section" id="stats-track-section" style="display:none;">
     <div class="chart-header">
-      <div class="chart-title" id="track-title">📈 カテゴリ追跡</div>
+      <div class="chart-title" id="track-title" style="flex:1;min-width:0;">📈 カテゴリ追跡</div>
+      <button type="button" class="track-unit-toggle" id="track-unit-toggle" onclick="toggleTrackUnitPrice()"
+        aria-pressed="false" title="合計ではなく1個あたりの単価をプロット">
+        <span class="track-unit-knob"></span>単価推移
+      </button>
     </div>
     <div class="chart-hint" id="track-hint" style="display:block;">上のグラフからカテゴリを選ぶと、ここに期間内の推移を表示します</div>
     <div class="chart-container" id="track-chart-container" style="display:none;height:240px;">
@@ -7794,6 +7827,36 @@ function aggregateTrack(records, category, period, categoryOf = trackCategoryOf)
   return { unit, buckets, total: Math.ceil(rawTotal), undated: Math.ceil(undated) };
 }
 
+// 単価の集計：枠ごとに「金額合計 ÷ 個数合計」（個数で重み付けした平均単価）
+//   購入のない枠は null（点なし）。単価は店頭価格を見るため割り勘を反映しない
+// 戻り値：{ unit, buckets:[{key,label,value,qty}], avg, qty, undatedQty }
+function aggregateTrackUnitPrice(records, match, period) {
+  const { from, to } = getTrackRange(period, records);
+  const unit = decideTrackUnit(period, from, to);
+  const buckets = buildTrackBuckets(from, to, unit);
+  const index = new Map(buckets.map((b, i) => [b.key, i]));
+  const sum = new Array(buckets.length).fill(0);
+  const qty = new Array(buckets.length).fill(0);
+  let allSum = 0, allQty = 0, undatedQty = 0;
+  (records || []).forEach(r => {
+    const key = trackKeyOf(r.date, unit);
+    (r.items || []).forEach(item => {
+      if (!match(item)) return;
+      const q = itemQty(item);
+      const v = Math.abs(item.price || 0);
+      allSum += v; allQty += q;
+      const i = key != null ? index.get(key) : undefined;
+      if (i === undefined) { undatedQty += q; return; }
+      sum[i] += v; qty[i] += q;
+    });
+  });
+  buckets.forEach((b, i) => {
+    b.qty = qty[i];
+    b.value = qty[i] > 0 ? Math.round(sum[i] / qty[i]) : null;
+  });
+  return { unit, buckets, avg: allQty > 0 ? Math.round(allSum / allQty) : null, qty: allQty, undatedQty };
+}
+
 // 確認用：コンソールで debugTrack('食費') と打つと、単位ごとの合計と既存グラフの値を突き合わせる
 async function debugTrack(category) {
   const all = await dbGetAll('receipts');
@@ -9314,6 +9377,7 @@ drillDown = async function(middle) {
 //   掘り下げるたびに middle・small を重ね、戻ると外す（top は残す）
 let trackPath = [];
 let trackChart = null;
+let trackShowUnitPrice = false; // 単価推移トグル（オン：単価／オフ：合計）
 const TRACK_UNIT_LABEL = { day: '日別', month: '月別', year: '年別' };
 const TRACK_LINE_COLORS = [null, '#57d4ff', '#ff7f57']; // 0番目はテーマのアクセント色
 
@@ -9322,6 +9386,14 @@ function _trackMiddle(name) { return { kind: 'middle', name, match: item => reso
 function _trackSmall(middle, small) {
   return { kind: 'small', name: small, middle,
     match: item => resolveMiddleName(item) === middle && (item.small_category || 'その他') === small };
+}
+
+function toggleTrackUnitPrice() {
+  trackShowUnitPrice = !trackShowUnitPrice;
+  const btn = document.getElementById('track-unit-toggle');
+  btn.classList.toggle('active', trackShowUnitPrice);
+  btn.setAttribute('aria-pressed', String(trackShowUnitPrice));
+  refreshTrack();
 }
 
 function clearTrack() {
@@ -9341,18 +9413,29 @@ async function renderTrack() {
   const all = await dbGetAll('receipts');
   const records = filterByStatType(filterByPeriod(all, currentPeriod));
   const HIT = '\u0000hit';
-  const results = trackPath.map(p => aggregateTrack(records, HIT, currentPeriod, item => p.match(item) ? HIT : null));
+  const unitMode = trackShowUnitPrice;
+  const results = trackPath.map(p => unitMode
+    ? aggregateTrackUnitPrice(records, p.match, currentPeriod)
+    : aggregateTrack(records, HIT, currentPeriod, item => p.match(item) ? HIT : null));
   const unit = results[0].unit;
   const labels = results[0].buckets.map(b => b.label);
+  const multi = trackPath.length > 1;
+  const yen = v => v == null ? '—' : `¥${v.toLocaleString()}`;
 
   document.getElementById('track-title').textContent =
-    `📈 ${trackPath.map(p => p.name).join(' › ')}の推移（${TRACK_UNIT_LABEL[unit]}）`;
+    `📈 ${trackPath.map(p => p.name).join(' › ')}の${unitMode ? '単価推移' : '推移'}（${TRACK_UNIT_LABEL[unit]}）`;
   const hint = document.getElementById('track-hint');
-  const totals = trackPath.map((p, i) =>
-    trackPath.length > 1 ? `${p.name} ¥${results[i].total.toLocaleString()}` : `¥${results[i].total.toLocaleString()}`);
-  const undated = results[0].undated;
-  hint.textContent = `期間合計 ${totals.join(' / ')}` +
-    (undated > 0 ? `（日付なし ¥${undated.toLocaleString()} は線に含まれません）` : '');
+  if (unitMode) {
+    const avgs = trackPath.map((p, i) => (multi ? `${p.name} ` : '') + yen(results[i].avg) + `（${results[i].qty}個）`);
+    const undatedQty = results[0].undatedQty;
+    hint.textContent = `期間平均単価 ${avgs.join(' / ')}` +
+      (undatedQty > 0 ? `（日付なし ${undatedQty}個は線に含まれません）` : '');
+  } else {
+    const totals = trackPath.map((p, i) => (multi ? `${p.name} ` : '') + yen(results[i].total));
+    const undated = results[0].undated;
+    hint.textContent = `期間合計 ${totals.join(' / ')}` +
+      (undated > 0 ? `（日付なし ¥${undated.toLocaleString()} は線に含まれません）` : '');
+  }
   hint.style.display = 'block';
 
   const container = document.getElementById('track-chart-container');
@@ -9372,7 +9455,9 @@ async function renderTrack() {
       pointRadius: many ? 2 : 3,
       pointHoverRadius: 5,
       tension: 0,
-      fill: false
+      fill: false,
+      spanGaps: true, // 単価モードの「購入なし」(null) は飛ばして前後をつなぐ
+      _qty: results[i].buckets.map(b => b.qty)
     };
   });
   trackChart = new Chart(document.getElementById('track-chart').getContext('2d'), {
@@ -9389,7 +9474,16 @@ async function renderTrack() {
           position: 'top',
           labels: { color: cssVar('--text'), boxWidth: 12, font: { size: 11 } }
         },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label} ¥${(ctx.parsed.y || 0).toLocaleString()}` } }
+        tooltip: {
+          filter: ctx => ctx.parsed.y != null,
+          callbacks: {
+            label: ctx => {
+              const base = ` ${ctx.dataset.label} ¥${(ctx.parsed.y || 0).toLocaleString()}`;
+              const q = ctx.dataset._qty && ctx.dataset._qty[ctx.dataIndex];
+              return unitMode && q ? `${base}（${q}個）` : base;
+            }
+          }
+        }
       },
       scales: {
         x: {
@@ -9397,7 +9491,8 @@ async function renderTrack() {
           grid: { display: false }
         },
         y: {
-          beginAtZero: true,
+          beginAtZero: !unitMode, // 単価は変化を見たいので0始まりにしない
+          grace: unitMode ? '10%' : 0,
           ticks: { color: cssVar('--text-dim'), font: { size: 10 }, callback: v => '¥' + Number(v).toLocaleString() },
           grid: { color: cssVar('--border') }
         }
