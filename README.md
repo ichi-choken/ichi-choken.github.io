@@ -2,6 +2,8 @@
 
 GitHub Pages で公開している個人用 Web アプリ置き場です．いずれもビルド不要の単一 HTML ファイルで構成し，データは端末内に保存されます．
 
+※以下の内容についての詳細は kakeibo,cio-handyfan 内部に記載されています．
+
 ## 公開中のもの
 
 ### 🧾 [家計簿](https://ichi-choken.github.io/kakeibo/)
