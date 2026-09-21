@@ -6262,6 +6262,7 @@ function renderCalendar() {
 
 function showCalDayPanel(dateStr, records) {
   const panel = document.getElementById('cal-day-panel');
+  panel.dataset.date = dateStr; // 削除・編集後の描き直しで同じ日を開き直すため
   const [y, m, d] = dateStr.split('-').map(Number);
   const label = `${y}年${m}月${d}日`;
 
@@ -6874,15 +6875,28 @@ async function deleteCurrentItem() {
 async function deleteCurrentReceipt() {
   if (!confirm('このレシートを削除しますか？')) return;
   await dbDelete('receipts', currentRecordId);
-  if (currentDetailContext === 'stats') {
-    // 詳細ビューを閉じる＋historyを戻す
-    _closeStatsDetailBase();
-    history.back();
-  } else {
-    // 履歴一覧に戻る＋historyを戻す
-    showHistoryList();
-    loadHistory();
-    history.back();
+  // 詳細を開いたときに pushState 済みなので、戻るだけで popstate 側が閉じて描き直す
+  history.back();
+}
+
+// 詳細で編集・削除した後に履歴タブを最新化する（表示中の月・開いていた日は保つ）
+async function _refreshHistoryAfterEdit() {
+  try {
+    if (_historyView === 'cal') {
+      _calRecords = await dbGetAll('receipts');
+      renderCalendar();
+      const panel = document.getElementById('cal-day-panel');
+      const d = panel && panel.dataset.date;
+      if (panel && panel.style.display !== 'none' && d) {
+        const recs = _calRecords.filter(r => r.date === d);
+        if (recs.length > 0) showCalDayPanel(d, recs);
+        else panel.style.display = 'none';
+      }
+    } else {
+      await loadHistory();
+    }
+  } catch (e) {
+    console.warn('履歴の再描画に失敗', e);
   }
 }
 
@@ -6894,7 +6908,7 @@ function showHistoryList() {
 function _backFromDetailBase() {
   showHistoryList();
   // 詳細で編集・削除していたら、履歴一覧が古いままなので読み直す
-  if (_receiptsDirty) { _receiptsDirty = false; loadHistory(); }
+  if (_receiptsDirty) { _receiptsDirty = false; _refreshHistoryAfterEdit(); }
 }
 var backFromDetail = _backFromDetailBase;
 
@@ -8831,10 +8845,12 @@ function _closeStatsDetailInner() {
   document.getElementById('stats-receipt-list-section').style.display = 'block';
   const section = document.getElementById('stats-receipt-list-section');
   setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  if (_receiptsDirty) { _receiptsDirty = false; _refreshStatsAfterEdit(); }
 }
 function _backFromDetailInner() {
   document.getElementById('history-list-view').style.display = 'block';
   document.getElementById('history-detail-view').style.display = 'none';
+  if (_receiptsDirty) { _receiptsDirty = false; _refreshHistoryAfterEdit(); }
 }
 async function _drillUpInner() {
   document.getElementById('stats-receipt-list-section').style.display = 'none';
