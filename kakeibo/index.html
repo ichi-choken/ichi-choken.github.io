@@ -1145,6 +1145,8 @@
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s;
+    white-space: nowrap;
+    min-width: 0;
   }
   .group-mode-btn.active {
     background: var(--surface);
@@ -2022,6 +2024,7 @@
   <div class="group-mode-bar">
     <button class="group-mode-btn active" id="group-mode-category" onclick="setGroupMode('category')">📊 カテゴリ別</button>
     <button class="group-mode-btn" id="group-mode-store" onclick="setGroupMode('store')">🏪 店別</button>
+    <button class="group-mode-btn" id="group-mode-track" onclick="setGroupMode('track')">📈 カテゴリ追跡</button>
   </div>
   <div class="period-selector-wrap">
     <button class="period-nav-btn" id="period-prev" onclick="shiftPeriod(-1)" title="前へ">‹</button>
@@ -2114,6 +2117,17 @@
 
   <div class="stats-empty" id="stats-empty" style="display:none;">
     データがありません
+  </div>
+
+  <!-- カテゴリ追跡（追跡モード時のみ表示。折れ線グラフは段階3で実装） -->
+  <div class="chart-section" id="stats-track-section" style="display:none;">
+    <div class="chart-header">
+      <div class="chart-title" id="track-title">📈 カテゴリ追跡</div>
+    </div>
+    <div class="chart-hint" id="track-hint" style="display:block;">上のグラフからカテゴリを選ぶと、ここに期間内の推移を表示します</div>
+    <div class="chart-container" id="track-chart-container" style="display:none;height:240px;">
+      <canvas id="track-chart"></canvas>
+    </div>
   </div>
 
   <!-- 年間月別グラフセクション -->
@@ -6468,6 +6482,7 @@ async function _showDetailFromStatsBase(r) {
   document.getElementById('stats-summary').style.display = 'none';
   document.getElementById('stats-chart-section').style.display = 'none';
   document.getElementById('stats-empty').style.display = 'none';
+  document.getElementById('stats-track-section').style.display = 'none';
   document.getElementById('stats-receipt-list-section').style.display = 'none';
   document.getElementById('stats-detail-view').style.display = 'block';
   window.scrollTo(0, 0);
@@ -6491,6 +6506,7 @@ function _closeStatsDetailBase() {
   document.getElementById('stats-detail-view').style.display = 'none';
   document.getElementById('stats-summary').style.display = '';
   document.getElementById('stats-chart-section').style.display = '';
+  _syncTrackSection();
   document.getElementById('stats-receipt-list-section').style.display = 'block';
   const section = document.getElementById('stats-receipt-list-section');
   setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -7192,7 +7208,7 @@ let currentPeriod = 'yearmonth';
 let drillMiddle = null;
 let drillLarge = null; // Phase4: 大カテゴリドリルダウン
 let currentChartType = 'pie';
-let currentGroupMode = 'category'; // 'category' or 'store'
+let currentGroupMode = 'category'; // 'category' | 'store' | 'track'（track はカテゴリ追跡）
 let currentStatType = 'expense'; // 'expense' | 'income'
 
 function setStatType(type) {
@@ -7211,8 +7227,10 @@ function setGroupMode(mode) {
   currentGroupMode = mode;
   document.getElementById('group-mode-category').classList.toggle('active', mode === 'category');
   document.getElementById('group-mode-store').classList.toggle('active', mode === 'store');
+  document.getElementById('group-mode-track').classList.toggle('active', mode === 'track');
   // 店別モードでは円グラフも使えるが、ドリルダウンは不要なのでリセット
   drillMiddle = null;
+  drillLarge = null;
   loadStats();
 }
 let currentChartMap = {};
@@ -7259,6 +7277,9 @@ function getPeriodRange(period) {
     from = new Date(now.getFullYear(), now.getMonth(), 1);
   } else if (period === 'custom' || period === 'yearmonth') {
     return { from: customPeriodFrom, to: customPeriodTo };
+  } else if (period === 'yearly') {
+    const y = yearlyYear || now.getFullYear();
+    return { from: new Date(y, 0, 1, 0, 0, 0), to: new Date(y, 11, 31, 23, 59, 59) };
   } else {
     from = new Date(0);
   }
@@ -7660,6 +7681,136 @@ function openModal(id) {
   _pushNavState(id);
 }
 
+// ===== カテゴリ追跡：集計ロジック（段階2。描画は段階3） =====
+// 日付は r.date（'YYYY-MM-DD'）の文字列で扱う（new Date('YYYY-MM-DD') はUTC解釈で日付がずれうるため）
+function _trackPad(n) { return String(n).padStart(2, '0'); }
+function _trackDateStr(d) { return `${d.getFullYear()}-${_trackPad(d.getMonth() + 1)}-${_trackPad(d.getDate())}`; }
+
+// 追跡の対象期間 {from, to}（ローカル時刻の Date）。全期間はデータ上の最古日〜今日
+function getTrackRange(period, records) {
+  if (period === 'all') {
+    const dates = (records || []).map(r => r.date).filter(Boolean).sort();
+    const now = new Date();
+    const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (!dates.length) return { from: to, to };
+    const [y, m, d] = dates[0].split('-').map(Number);
+    const last = dates[dates.length - 1].split('-').map(Number);
+    const lastDate = new Date(last[0], last[1] - 1, last[2]);
+    return { from: new Date(y, m - 1, d), to: lastDate > to ? lastDate : to };
+  }
+  const { from, to } = getPeriodRange(period);
+  return {
+    from: new Date(from.getFullYear(), from.getMonth(), from.getDate()),
+    to:   new Date(to.getFullYear(),   to.getMonth(),   to.getDate())
+  };
+}
+
+// 1つ下の単位：'day' | 'month' | 'year'
+function decideTrackUnit(period, from, to) {
+  if (period === 'yearly') return 'month';
+  if (period === 'yearmonth' || period === 'week') return 'day';
+  // カスタム・全期間は長さで決める
+  const days = Math.round((to - from) / 86400000) + 1;
+  if (days <= 62) return 'day';
+  const months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()) + 1;
+  if (months <= 24) return 'month';
+  return 'year';
+}
+
+// 日付文字列 → 単位のキー
+function trackKeyOf(dateStr, unit) {
+  if (!dateStr) return null;
+  if (unit === 'year')  return dateStr.slice(0, 4);
+  if (unit === 'month') return dateStr.slice(0, 7);
+  return dateStr.slice(0, 10);
+}
+
+// from〜to を単位ごとの枠に分ける（購入のない枠も含める）
+function buildTrackBuckets(from, to, unit) {
+  const buckets = [];
+  const sameYear = from.getFullYear() === to.getFullYear();
+  if (unit === 'day') {
+    const d = new Date(from);
+    while (d <= to) {
+      buckets.push({ key: _trackDateStr(d), label: `${d.getMonth() + 1}/${d.getDate()}`, value: 0 });
+      d.setDate(d.getDate() + 1);
+    }
+  } else if (unit === 'month') {
+    const d = new Date(from.getFullYear(), from.getMonth(), 1);
+    const end = new Date(to.getFullYear(), to.getMonth(), 1);
+    while (d <= end) {
+      const key = `${d.getFullYear()}-${_trackPad(d.getMonth() + 1)}`;
+      const label = sameYear ? `${d.getMonth() + 1}月` : `${String(d.getFullYear()).slice(2)}/${d.getMonth() + 1}`;
+      buckets.push({ key, label, value: 0 });
+      d.setMonth(d.getMonth() + 1);
+    }
+  } else {
+    for (let y = from.getFullYear(); y <= to.getFullYear(); y++) {
+      buckets.push({ key: String(y), label: `${y}年`, value: 0 });
+    }
+  }
+  return buckets;
+}
+
+// 商品のカテゴリ名（renderStats の最上位グラフと同じ判定）
+function trackCategoryOf(item) {
+  if (currentStatType === 'income') return item.middle_category || 'その他収入';
+  if (largeDef && largeDef.length > 0) {
+    const midId = resolveMidId(item);
+    for (const ld of largeDef) {
+      if ((ld.middles || []).includes(midId)) return ld.large;
+    }
+    return '未分類';
+  }
+  return resolveMiddleName(item);
+}
+
+// records（期間・支出/収入で絞り込み済み）から、category の単位ごとの合計を出す
+// 戻り値：{ unit, buckets:[{key,label,value}], total, undated }
+//   value は表示用に切り上げ済み。total は既存グラフと同じく「未丸めの合計を最後に切り上げ」た値
+//   undated は日付なしでどの枠にも入れられなかった金額（既存グラフには含まれる）
+function aggregateTrack(records, category, period, categoryOf = trackCategoryOf) {
+  const { from, to } = getTrackRange(period, records);
+  const unit = decideTrackUnit(period, from, to);
+  const buckets = buildTrackBuckets(from, to, unit);
+  const index = new Map(buckets.map((b, i) => [b.key, i]));
+  const raw = new Array(buckets.length).fill(0);
+  let rawTotal = 0, undated = 0;
+  (records || []).forEach(r => {
+    const ratio = r.split_enabled ? 1 / (r.split_count || 2) : 1;
+    const key = trackKeyOf(r.date, unit);
+    (r.items || []).forEach(item => {
+      if (categoryOf(item) !== category) return;
+      const v = Math.abs((item.price || 0) * ratio);
+      rawTotal += v;
+      const i = key != null ? index.get(key) : undefined;
+      if (i === undefined) undated += v;
+      else raw[i] += v;
+    });
+  });
+  buckets.forEach((b, i) => { b.value = Math.ceil(raw[i]); });
+  return { unit, buckets, total: Math.ceil(rawTotal), undated: Math.ceil(undated) };
+}
+
+// 確認用：コンソールで debugTrack('食費') と打つと、単位ごとの合計と既存グラフの値を突き合わせる
+async function debugTrack(category) {
+  const all = await dbGetAll('receipts');
+  const records = filterByStatType(filterByPeriod(all, currentPeriod));
+  const res = aggregateTrack(records, category, currentPeriod);
+  console.table(res.buckets.filter(b => b.value > 0));
+  const bucketSum = res.buckets.reduce((s, b) => s + b.value, 0);
+  const chartVal = currentChartMap ? currentChartMap[category] : undefined;
+  console.log(`単位=${res.unit} 枠数=${res.buckets.length} 枠の合計=${bucketSum} 日付なし=${res.undated} 合計=${res.total} 既存グラフ=${chartVal}`);
+  return res;
+}
+
+// 追跡エリアの表示状態をモードに合わせる（中身の描画は段階3）
+function _syncTrackSection() {
+  const sec = document.getElementById('stats-track-section');
+  if (!sec) return;
+  sec.style.display = currentGroupMode === 'track' ? 'block' : 'none';
+}
+
 async function loadStats() {
   drillMiddle = null;
   drillLarge = null;
@@ -7668,8 +7819,11 @@ async function loadStats() {
   document.getElementById('stats-detail-view').style.display = 'none';
   document.getElementById('stats-summary').style.display = '';
 
-  // 年間モード
-  if (currentPeriod === 'yearly') {
+  // 追跡エリアは追跡モードのときだけ表示
+  _syncTrackSection();
+
+  // 年間モード（追跡モードでは使わず、下の通常グラフで大カテゴリを出す）
+  if (currentPeriod === 'yearly' && currentGroupMode !== 'track') {
     document.getElementById('yearly-chart-section').style.display = 'none';
     document.getElementById('yearly-empty').style.display = 'none';
     document.getElementById('stats-chart-section').style.display = 'none';
@@ -8875,6 +9029,7 @@ function _closeStatsDetailInner() {
   document.getElementById('stats-detail-view').style.display = 'none';
   document.getElementById('stats-summary').style.display = '';
   document.getElementById('stats-chart-section').style.display = '';
+  _syncTrackSection();
   document.getElementById('stats-receipt-list-section').style.display = 'block';
   const section = document.getElementById('stats-receipt-list-section');
   setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
