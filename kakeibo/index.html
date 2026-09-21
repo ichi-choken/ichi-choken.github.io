@@ -1729,9 +1729,6 @@
     <div class="card" id="manual-entry-card">
       <div class="card-title">✍️ 手入力で追加</div>
 
-      <!-- 追加済み商品・保存メッセージ（入力欄より上に表示） -->
-      <ul class="item-list" id="manual-items-list" style="margin-bottom:12px;"></ul>
-
       <input type="hidden" id="manual-store" value="手入力">
       <input type="hidden" id="manual-time" value="">
 
@@ -1754,6 +1751,9 @@
           <button onclick="manualDateShift(+1)" style="flex-shrink:0;width:36px;height:40px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;">›</button>
         </div>
       </div>
+
+      <!-- 追加済み商品（日付と商品名の間に表示。空のときは CSS の :empty で非表示） -->
+      <ul class="item-list" id="manual-items-list" style="margin-bottom:12px;"></ul>
 
       <!-- 商品名 -->
       <div style="margin-bottom:12px;">
