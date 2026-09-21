@@ -4909,9 +4909,10 @@ var closeSettings = _closeSettingsBase;
 // ===== エクスポート =====
 // エクスポート内容とファイル名を組み立てる（ダウンロード／共有で共通利用）
 async function buildExportFile() {
-  const records = await dbGetAll('receipts');
+  // version 3：各商品に quantity（個数）を必ず含める。個数のない旧データは1で出力
+  const records = (await dbGetAll('receipts')).map(recordWithQuantity);
   const payload = {
-    version: 2,
+    version: 3,
     exported_at: new Date().toISOString(),
     categoryDef: categoryDef || [],
     largeDef: largeDef || [],
@@ -5254,7 +5255,8 @@ async function importData(file) {
       // manually_categorized は全てtrueにリセット（再カテゴライズを無効化）
       const { id, ...rest } = r;
       if (Array.isArray(rest.items)) {
-        rest.items = rest.items.map(item => ({ ...item, manually_categorized: true }));
+        // quantity のない旧形式（version 1〜2）は1個として補う
+        rest.items = rest.items.map(item => ({ ...withQuantity(item), manually_categorized: true }));
       }
       await dbAdd('receipts', rest);
       added++;
@@ -5890,7 +5892,7 @@ async function saveReceipt() {
     const storeBrandId = autoRegisterStoreBrand(parsedData.store_brand);
     // 各商品にmiddle_category_idを付与
     const items = (parsedData.items || []).map(item => ({
-      ...item,
+      ...withQuantity(item),
       middle_category_id: midNameToId(item.middle_category) || null
     }));
     await dbAdd('receipts', {
@@ -6476,6 +6478,14 @@ function itemQty(item) {
   const q = parseInt(item && item.quantity, 10);
   return q >= 1 ? q : 1;
 }
+// 商品の quantity を「1以上の整数」にそろえる（個数のない旧データ・文字列・不正値の補正）
+function withQuantity(item) {
+  return { ...item, quantity: itemQty(item) };
+}
+function recordWithQuantity(r) {
+  return Array.isArray(r.items) ? { ...r, items: r.items.map(withQuantity) } : r;
+}
+
 // 個数2以上なら「(¥単価×個数)」のHTMLを返す（金額の左に置く）
 function unitPriceHtml(item) {
   const q = itemQty(item);
