@@ -8206,7 +8206,6 @@ async function renderIncomeCatReceipts(catName) {
   }
 
   section.style.display = 'block';
-  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ===== 店別グラフ =====
@@ -8366,7 +8365,6 @@ async function renderStoreReceipts(storeName, records) {
   }
 
   section.style.display = 'block';
-  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 var drillDown = async function(label) {
@@ -8608,7 +8606,6 @@ async function renderLargeDrillReceipts(large, midIdToLarge, records) {
   }
 
   section.style.display = 'block';
-  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function renderMiddleDrillReceipts(middle, records) {
@@ -8670,9 +8667,6 @@ async function renderMiddleDrillReceipts(middle, records) {
   }
 
   section.style.display = 'block';
-  // グラフ（棒グラフ）の先頭へスクロール（レシートリストではなくグラフを先に見せる）
-  const chartSection = document.getElementById('stats-chart-section');
-  if (chartSection) chartSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function renderSmallDrillReceipts(middle, small) {
@@ -8736,7 +8730,6 @@ async function renderSmallDrillReceipts(middle, small) {
   }
 
   section.style.display = 'block';
-  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ===== 編集内容の即時反映（集計タブ） =====
@@ -9144,6 +9137,33 @@ drillDown = async function(middle) {
   await _origDrillDown_b(middle);
   _pushNavState('stats-drill');
 };
+
+// --- 集計グラフのカテゴリ選択で画面が勝手に動かないようにする ---
+// 描き直し中は一覧が空になってページが縮み、ブラウザがスクロール位置を詰めてしまうため、
+// 実行中は集計タブの高さを固定し、終わったら元のスクロール位置に戻す。
+async function _keepStatsScroll(fn) {
+  const y = window.scrollY;
+  const tab = document.getElementById('tab-stats');
+  const prevMin = tab.style.minHeight;
+  tab.style.minHeight = tab.offsetHeight + 'px';
+  try {
+    return await fn();
+  } finally {
+    window.scrollTo(0, y);
+    requestAnimationFrame(() => {
+      tab.style.minHeight = prevMin;
+      window.scrollTo(0, y); // 高さ固定を外した後も、届く範囲で同じ位置を保つ
+    });
+  }
+}
+(function wrapStatsKeepScroll() {
+  const wrap = f => function(...args) { return _keepStatsScroll(() => f.apply(this, args)); };
+  drillDown               = wrap(drillDown);
+  _drillUpInner           = wrap(_drillUpInner);
+  renderStoreReceipts     = wrap(renderStoreReceipts);
+  renderIncomeCatReceipts = wrap(renderIncomeCatReceipts);
+  renderSmallDrillReceipts = wrap(renderSmallDrillReceipts);
+})();
 
 // --- popstate ハンドラ（ブラウザ/スマホの戻るボタン） ---
 let _skipNextCloseTopLayer = false;
