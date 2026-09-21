@@ -8260,6 +8260,13 @@ function renderChart(map, title, isDrill) {
   }
 }
 
+// タッチ端末では touchstart の後に同じ位置の click も届くため、直後の click を捨てる
+let _lastHitTouchAt = 0;
+function _isGhostClick(e) {
+  if (e.type === 'touchstart') { _lastHitTouchAt = Date.now(); return false; }
+  return e.type === 'click' && Date.now() - _lastHitTouchAt < 800;
+}
+
 function _makeMiddleBarHitHandler(labels) {
   return async function(e) {
     if (!statsChart) return;
@@ -8267,6 +8274,7 @@ function _makeMiddleBarHitHandler(labels) {
     if (!yScale) return;
 
     const rect = statsChart.canvas.getBoundingClientRect();
+    if (_isGhostClick(e)) return; // タッチ直後の click は無視（二重ドリル防止）
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const offsetY = clientY - rect.top;
@@ -8292,6 +8300,7 @@ function _makeIncomeBarHitHandler(labels) {
     if (!yScale) return;
 
     const rect = statsChart.canvas.getBoundingClientRect();
+    if (_isGhostClick(e)) return; // タッチ直後の click は無視（二重ドリル防止）
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const offsetY = clientY - rect.top;
@@ -8451,6 +8460,7 @@ function renderStoreChart(storeMap, records) {
     const yScale = statsChart.scales.y;
     if (!yScale) return;
     const rect = statsChart.canvas.getBoundingClientRect();
+    if (_isGhostClick(e)) return; // タッチ直後の click は無視（二重ドリル防止）
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const offsetY = clientY - rect.top;
@@ -8680,6 +8690,7 @@ function _makeSmallBarHitHandler(middle, labels) {
     if (!yScale) return;
 
     const rect = statsChart.canvas.getBoundingClientRect();
+    if (_isGhostClick(e)) return; // タッチ直後の click は無視（二重ドリル防止）
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const offsetY = clientY - rect.top;
@@ -9309,7 +9320,7 @@ const TRACK_LINE_COLORS = [null, '#57d4ff', '#ff7f57']; // 0番目はテーマ�
 function _trackTop(name)    { return { kind: 'top', name, match: item => trackCategoryOf(item) === name }; }
 function _trackMiddle(name) { return { kind: 'middle', name, match: item => resolveMiddleName(item) === name }; }
 function _trackSmall(middle, small) {
-  return { kind: 'small', name: small,
+  return { kind: 'small', name: small, middle,
     match: item => resolveMiddleName(item) === middle && (item.small_category || 'その他') === small };
 }
 
@@ -9326,6 +9337,7 @@ function clearTrack() {
 
 async function renderTrack() {
   if (currentGroupMode !== 'track' || trackPath.length === 0) return;
+  _syncTrackSection();
   const all = await dbGetAll('receipts');
   const records = filterByStatType(filterByPeriod(all, currentPeriod));
   const HIT = '\u0000hit';
@@ -9399,17 +9411,31 @@ async function refreshTrack() {
   if (currentGroupMode === 'track' && trackPath.length > 0) await renderTrack();
 }
 
+// ドリル状態（drillLarge / drillMiddle）から追跡の線を組み立て直す
+// タップの順番やタイミング（touchstart と click の二重発火など）に左右されないよう、操作後の状態だけで決める
+//   top    : 大カテゴリ（大カテゴリ未設定なら中カテゴリ）。一番上まで戻っても直前の top は残す
+//   middle : 大カテゴリ設定時、中カテゴリの小カテゴリ表示中だけ
+//   small  : 同じ中カテゴリの小カテゴリを選んでいる間だけ残す
+function _syncTrackPathFromDrill() {
+  const useLarge = largeDef && largeDef.length > 0;
+  const topName = useLarge ? drillLarge : drillMiddle;
+  const prevTop = trackPath.find(p => p.kind === 'top');
+  const prevSmall = trackPath.find(p => p.kind === 'small');
+  const next = [];
+  if (topName) next.push(prevTop && prevTop.name === topName ? prevTop : _trackTop(topName));
+  else if (prevTop) next.push(prevTop);                 // 一番上に戻っても選んだカテゴリは残す
+  if (useLarge && drillLarge && drillMiddle) next.push(_trackMiddle(drillMiddle));
+  if (prevSmall && drillMiddle && prevSmall.middle === drillMiddle) next.push(prevSmall);
+  trackPath = next;
+}
+
 // タップ・戻る操作に追跡を差し込む
 (function wrapTrackSelection() {
   const _dd = drillDown;
   drillDown = async function(label) {
-    const atTop = !drillLarge && !drillMiddle;
-    const toMiddle = !!drillLarge && !drillMiddle; // 大カテゴリ表示中に中カテゴリを選んだ
     await _dd.apply(this, arguments);
     if (currentGroupMode !== 'track') return;
-    if (atTop) trackPath = [_trackTop(label)];
-    else if (toMiddle && trackPath.length > 0) trackPath = [trackPath[0], _trackMiddle(label)];
-    else return;
+    _syncTrackPathFromDrill();
     await renderTrack();
   };
   const _inc = renderIncomeCatReceipts;
@@ -9422,7 +9448,8 @@ async function refreshTrack() {
   const _small = renderSmallDrillReceipts;
   renderSmallDrillReceipts = async function(middle, small) {
     await _small.apply(this, arguments);
-    if (currentGroupMode !== 'track' || trackPath.length === 0) return;
+    if (currentGroupMode !== 'track') return;
+    _syncTrackPathFromDrill();
     // 小カテゴリは1本だけ（別の小カテゴリを選んだら入れ替え）
     trackPath = trackPath.filter(p => p.kind !== 'small').concat(_trackSmall(middle, small));
     await renderTrack();
@@ -9430,10 +9457,9 @@ async function refreshTrack() {
   const _up = _drillUpInner;
   _drillUpInner = async function() {
     await _up.apply(this, arguments);
-    if (currentGroupMode !== 'track' || trackPath.length === 0) return;
-    // 戻った先の階層より深い線を外す（top は残す）
-    const next = trackPath.filter(p => p.kind === 'top' || (p.kind === 'middle' && drillMiddle));
-    if (next.length !== trackPath.length) { trackPath = next; await renderTrack(); }
+    if (currentGroupMode !== 'track') return;
+    _syncTrackPathFromDrill();
+    await renderTrack();
   };
 })();
 
