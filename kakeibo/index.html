@@ -7220,6 +7220,7 @@ function setStatType(type) {
   incBtn.className = 'stat-type-btn' + (!isExpense ? ' active-income' : '');
   const lbl = document.getElementById('stats-total-label');
   if (lbl) lbl.textContent = isExpense ? '合計支出' : '合計収入';
+  clearTrack(); // 支出と収入でカテゴリの種類が違うため
   if (document.getElementById('tab-stats').classList.contains('active')) loadStats();
 }
 
@@ -7228,6 +7229,7 @@ function setGroupMode(mode) {
   document.getElementById('group-mode-category').classList.toggle('active', mode === 'category');
   document.getElementById('group-mode-store').classList.toggle('active', mode === 'store');
   document.getElementById('group-mode-track').classList.toggle('active', mode === 'track');
+  clearTrack();
   // 店別モードでは円グラフも使えるが、ドリルダウンは不要なのでリセット
   drillMiddle = null;
   drillLarge = null;
@@ -7842,6 +7844,7 @@ async function loadStats() {
     const records = filterByPeriod(all, currentPeriod);
     updateBalanceBar(records);
     renderStats(records);
+    await refreshTrack();
   } catch(e) {
     console.error(e);
   }
@@ -8946,6 +8949,7 @@ async function _refreshStatsAfterEdit() {
     updateBalanceBar(records);
     updateStatsSummary(filterByStatType(records));
     if (_statsListRerender) await _statsListRerender();
+    await refreshTrack();
   } catch (e) {
     console.warn('集計の再描画に失敗', e);
   }
@@ -9292,6 +9296,146 @@ drillDown = async function(middle) {
   await _origDrillDown_b(middle);
   _pushNavState('stats-drill');
 };
+
+// ===== カテゴリ追跡：折れ線グラフ描画（段階3〜4） =====
+// trackPath：追跡中の階層。[{kind:'top'|'middle'|'small', name, match(item)}]
+//   top は一番上の階層で選んだカテゴリ（大カテゴリ／大カテゴリ未設定時は中カテゴリ／収入カテゴリ）
+//   掘り下げるたびに middle・small を重ね、戻ると外す（top は残す）
+let trackPath = [];
+let trackChart = null;
+const TRACK_UNIT_LABEL = { day: '日別', month: '月別', year: '年別' };
+const TRACK_LINE_COLORS = [null, '#57d4ff', '#ff7f57']; // 0番目はテーマのアクセント色
+
+function _trackTop(name)    { return { kind: 'top', name, match: item => trackCategoryOf(item) === name }; }
+function _trackMiddle(name) { return { kind: 'middle', name, match: item => resolveMiddleName(item) === name }; }
+function _trackSmall(middle, small) {
+  return { kind: 'small', name: small,
+    match: item => resolveMiddleName(item) === middle && (item.small_category || 'その他') === small };
+}
+
+function clearTrack() {
+  trackPath = [];
+  if (trackChart) { trackChart.destroy(); trackChart = null; }
+  const c = document.getElementById('track-chart-container');
+  if (c) c.style.display = 'none';
+  document.getElementById('track-title').textContent = '📈 カテゴリ追跡';
+  const hint = document.getElementById('track-hint');
+  hint.textContent = '上のグラフからカテゴリを選ぶと、ここに期間内の推移を表示します';
+  hint.style.display = 'block';
+}
+
+async function renderTrack() {
+  if (currentGroupMode !== 'track' || trackPath.length === 0) return;
+  const all = await dbGetAll('receipts');
+  const records = filterByStatType(filterByPeriod(all, currentPeriod));
+  const HIT = '\u0000hit';
+  const results = trackPath.map(p => aggregateTrack(records, HIT, currentPeriod, item => p.match(item) ? HIT : null));
+  const unit = results[0].unit;
+  const labels = results[0].buckets.map(b => b.label);
+
+  document.getElementById('track-title').textContent =
+    `📈 ${trackPath.map(p => p.name).join(' › ')}の推移（${TRACK_UNIT_LABEL[unit]}）`;
+  const hint = document.getElementById('track-hint');
+  const totals = trackPath.map((p, i) =>
+    trackPath.length > 1 ? `${p.name} ¥${results[i].total.toLocaleString()}` : `¥${results[i].total.toLocaleString()}`);
+  const undated = results[0].undated;
+  hint.textContent = `期間合計 ${totals.join(' / ')}` +
+    (undated > 0 ? `（日付なし ¥${undated.toLocaleString()} は線に含まれません）` : '');
+  hint.style.display = 'block';
+
+  const container = document.getElementById('track-chart-container');
+  container.style.display = 'block';
+  container.style.height = trackPath.length > 1 ? '270px' : '240px'; // 凡例のぶん少し高く
+  if (trackChart) { trackChart.destroy(); trackChart = null; }
+  const accent = cssVar('--accent') || '#c8ff57';
+  const many = labels.length > 31;
+  const datasets = trackPath.map((p, i) => {
+    const color = TRACK_LINE_COLORS[i] || accent;
+    return {
+      label: p.name,
+      data: results[i].buckets.map(b => b.value),
+      borderColor: color,
+      backgroundColor: color,
+      borderWidth: i === 0 ? 2.5 : 2,
+      pointRadius: many ? 2 : 3,
+      pointHoverRadius: 5,
+      tension: 0,
+      fill: false
+    };
+  });
+  trackChart = new Chart(document.getElementById('track-chart').getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: trackPath.length > 1,
+          position: 'top',
+          labels: { color: cssVar('--text'), boxWidth: 12, font: { size: 11 } }
+        },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label} ¥${(ctx.parsed.y || 0).toLocaleString()}` } }
+      },
+      scales: {
+        x: {
+          ticks: { color: cssVar('--text-dim'), font: { size: 10 }, autoSkip: true, maxTicksLimit: 8, maxRotation: 0 },
+          grid: { display: false }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: cssVar('--text-dim'), font: { size: 10 }, callback: v => '¥' + Number(v).toLocaleString() },
+          grid: { color: cssVar('--border') }
+        }
+      }
+    }
+  });
+}
+
+// 追跡中なら今の期間で描き直す（期間変更・編集後の再描画用）
+async function refreshTrack() {
+  if (currentGroupMode === 'track' && trackPath.length > 0) await renderTrack();
+}
+
+// タップ・戻る操作に追跡を差し込む
+(function wrapTrackSelection() {
+  const _dd = drillDown;
+  drillDown = async function(label) {
+    const atTop = !drillLarge && !drillMiddle;
+    const toMiddle = !!drillLarge && !drillMiddle; // 大カテゴリ表示中に中カテゴリを選んだ
+    await _dd.apply(this, arguments);
+    if (currentGroupMode !== 'track') return;
+    if (atTop) trackPath = [_trackTop(label)];
+    else if (toMiddle && trackPath.length > 0) trackPath = [trackPath[0], _trackMiddle(label)];
+    else return;
+    await renderTrack();
+  };
+  const _inc = renderIncomeCatReceipts;
+  renderIncomeCatReceipts = async function(catName) {
+    await _inc.apply(this, arguments);
+    if (currentGroupMode !== 'track') return;
+    trackPath = [_trackTop(catName)];
+    await renderTrack();
+  };
+  const _small = renderSmallDrillReceipts;
+  renderSmallDrillReceipts = async function(middle, small) {
+    await _small.apply(this, arguments);
+    if (currentGroupMode !== 'track' || trackPath.length === 0) return;
+    // 小カテゴリは1本だけ（別の小カテゴリを選んだら入れ替え）
+    trackPath = trackPath.filter(p => p.kind !== 'small').concat(_trackSmall(middle, small));
+    await renderTrack();
+  };
+  const _up = _drillUpInner;
+  _drillUpInner = async function() {
+    await _up.apply(this, arguments);
+    if (currentGroupMode !== 'track' || trackPath.length === 0) return;
+    // 戻った先の階層より深い線を外す（top は残す）
+    const next = trackPath.filter(p => p.kind === 'top' || (p.kind === 'middle' && drillMiddle));
+    if (next.length !== trackPath.length) { trackPath = next; await renderTrack(); }
+  };
+})();
 
 // --- 集計グラフのカテゴリ選択で画面が勝手に動かないようにする ---
 // 描き直し中は一覧が空になってページが縮み、ブラウザがスクロール位置を詰めてしまうため、
