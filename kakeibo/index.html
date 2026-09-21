@@ -475,6 +475,14 @@
     font-size: 13px;
     white-space: nowrap;
   }
+  /* 個数2以上のときに金額の左へ出す単価表示 */
+  .item-unit-price {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-right: 4px;
+    white-space: nowrap;
+  }
 
   /* 履歴リスト */
   .history-list { list-style: none; }
@@ -1835,8 +1843,10 @@
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          <input type="number" id="manual-item-price" placeholder="" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
+          <input type="number" id="manual-item-price" placeholder="合計金額" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
           <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">円</span>
+          <input type="number" id="manual-item-qty" value="1" min="1" step="1" inputmode="numeric" aria-label="個数" style="width:56px;flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 6px;color:var(--text);font-size:14px;outline:none;text-align:center;">
+          <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">個</span>
         </div>
       </div>
 
@@ -2211,8 +2221,16 @@
     <div id="small-cat-container">
       <!-- カテゴリ定義あり → select、なし → input -->
     </div>
-    <div class="modal-label">金額</div>
-    <input type="number" id="edit-item-price" placeholder="0">
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;min-width:0;">
+        <div class="modal-label">金額（合計）</div>
+        <input type="number" id="edit-item-price" placeholder="0">
+      </div>
+      <div style="width:80px;flex-shrink:0;">
+        <div class="modal-label">個数</div>
+        <input type="number" id="edit-item-qty" min="1" step="1" value="1" inputmode="numeric">
+      </div>
+    </div>
     <button class="btn btn-primary" onclick="saveItemEdit()">保存</button>
     <button class="btn btn-danger" onclick="deleteCurrentItem()">この商品を削除</button>
     <button class="btn btn-secondary" onclick="closeModal('item-edit-modal')">キャンセル</button>
@@ -5474,7 +5492,8 @@ small_category（小カテゴリ）: 居酒屋メニューレベルの一般名�
       "name": "商品名（レシートの表記を省略せず正確に。黒・白・塩・糖などの修飾語も含めること）",
       "middle_category": "中カテゴリ",
       "small_category": "小カテゴリ",
-      "price": 税込金額(数値、レシートに印字されている個別商品の金額をそのまま。税抜表示レシートの場合は税込換算した金額)
+      "quantity": 個数(整数。レシートに「2個」「×2」「2点」「@150×2」等の記載があればその数、なければ1),
+      "price": 税込金額(数値、その商品行の合計金額＝単価×個数。レシートに印字されている行の金額をそのまま。税抜表示レシートの場合は税込換算した金額)
     }
   ]
 }
@@ -5492,6 +5511,7 @@ store_brand（チェーン・ブランド名）の抽出ルール：
 - timeはレシートに購入時刻が記載されている場合のみHH:MM形式で入れる。読み取れない場合はnull
 - 合計金額は税・割引をすべて反映した実際の支払い金額（税込み合計）。小計ではなく、レシートに「合計」「お買上金額」「お支払い金額」として印字されている金額
 - 商品名は絶対に省略・短縮しないこと
+- 同じ商品を複数個買った行は1つの item にまとめ、quantity に個数、price に行の合計金額を入れる（単価を price にしない）。個数・単価の補足行（例：「2個 × 単150」）は独立した item にしない
 - ポイント情報・会員情報・税額明細・「合計」「お会計」等の合計行はitemsに含めない（購入商品のみ）`;
 
     const _geminiUrl1 = `https://generativelanguage.googleapis.com/v1beta/models/${localStorage.getItem('gemini_model') || 'gemini-2.5-flash'}:generateContent?key=${apiKey}`;
@@ -5648,7 +5668,7 @@ function renderResult(data) {
     li.innerHTML = `
       <span class="item-name">${escHtml(item.name)}</span>
       <span class="item-cat">${escHtml(resolveCatLabel(item))}</span>
-      <span class="item-price">¥${(item.price || 0).toLocaleString()}</span>
+      <span class="item-price">${unitPriceHtml(item)}¥${(item.price || 0).toLocaleString()}</span>
       <button class="item-edit-btn" title="編集" onclick="openPreviewItemEdit(${idx}); event.stopPropagation();">✏️</button>
     `;
     li.addEventListener('click', () => openPreviewItemEdit(idx));
@@ -5866,6 +5886,7 @@ function openPreviewItemEdit(idx) {
     const item = parsedData.items[previewEditItemIndex];
     document.getElementById('edit-item-name').value = item.name || '';
     document.getElementById('edit-item-price').value = item.price || 0;
+    document.getElementById('edit-item-qty').value = itemQty(item);
     buildMiddleCategorySelectFromItem(item);
     // small_category の初期値を正しくセット
     const smallEl = document.getElementById('edit-item-small');
@@ -5881,6 +5902,7 @@ function openPreviewItemEdit(idx) {
     // 新規追加
     document.getElementById('edit-item-name').value = '';
     document.getElementById('edit-item-price').value = 0;
+    document.getElementById('edit-item-qty').value = 1;
     buildMiddleCategorySelect('');
   }
   modal.classList.add('open');
@@ -6402,6 +6424,19 @@ async function showDetailFromCal(id) {
 
 // ===== 詳細表示・編集 =====
 
+// 個数（未設定・不正値は1）
+function itemQty(item) {
+  const q = parseInt(item && item.quantity, 10);
+  return q >= 1 ? q : 1;
+}
+// 個数2以上なら「(¥単価×個数)」のHTMLを返す（金額の左に置く）
+function unitPriceHtml(item) {
+  const q = itemQty(item);
+  if (q < 2) return '';
+  const unit = Math.round((item.price || 0) / q);
+  return `<span class="item-unit-price">(¥${unit.toLocaleString()}×${q})</span>`;
+}
+
 // 割り勘考慮の実質負担合計を返す
 function effectiveTotal(r) {
   const itemsSum = (r.items || []).reduce((s, i) => s + (i.price || 0), 0);
@@ -6514,7 +6549,7 @@ function _renderDetail() {
         <span class="detail-item-cat">${escHtml(resolveCatLabel(item))}</span>
       </div>
       <div class="detail-item-price-block">
-        <div class="detail-item-price">¥${price.toLocaleString()}</div>
+        <div class="detail-item-price">${unitPriceHtml(item)}¥${price.toLocaleString()}</div>
         ${splitHtml}
       </div>
       <button class="item-edit-btn" onclick="openItemEditModal(${idx})">✏️</button>
@@ -6747,6 +6782,7 @@ var openItemEditModal = function(idx) {
   const item = currentRecord.items[idx];
   document.getElementById('edit-item-name').value = item.name || '';
   document.getElementById('edit-item-price').value = item.price || 0;
+  document.getElementById('edit-item-qty').value = itemQty(item);
 
   // price がマイナス（収入）かどうかで UI を切り替える
   const isIncome = (item.price || 0) < 0 || currentRecord.entry_type === 'income';
@@ -6812,6 +6848,7 @@ async function saveItemEdit() {
   const newMid   = document.getElementById('edit-item-large').value;
   const newSmall = document.getElementById('edit-item-small')?.value?.trim() || '';
   const newPrice = parseInt(document.getElementById('edit-item-price').value) || 0;
+  const newQty   = Math.max(1, parseInt(document.getElementById('edit-item-qty').value, 10) || 1);
 
   // price がマイナス（収入）かどうか
   const isIncome = newPrice < 0 || currentRecord.entry_type === 'income';
@@ -6824,12 +6861,14 @@ async function saveItemEdit() {
       item.middle_category_id = isIncome ? null : (midNameToId(newMid) || null);
       if (!isIncome) item.small_category = newSmall || item.small_category;
       item.price = newPrice;
+      item.quantity = newQty;
     } else {
       parsedData.items.push({
         name: newName || '新しい商品',
         middle_category: newMid,
         small_category: isIncome ? '' : newSmall,
-        price: newPrice
+        price: newPrice,
+        quantity: newQty
       });
     }
     parsedData.total = parsedData.items.reduce((s, i) => s + (i.price || 0), 0);
@@ -6842,6 +6881,7 @@ async function saveItemEdit() {
     item.middle_category_id = isIncome ? null : (midNameToId(item.middle_category) || null);
     if (!isIncome) item.small_category = newSmall || item.small_category;
     item.price = newPrice;
+    item.quantity = newQty;
     item.manually_categorized = true;
     currentRecord.total = currentRecord.items.reduce((s, i) => s + (i.price || 0), 0);
     await dbPut('receipts', currentRecord);
@@ -10678,6 +10718,8 @@ function addManualItem() {
   const name = nameEl.value.trim();
   const priceRaw = priceEl.value.trim();
   const price = parseInt(priceRaw) || 0;
+  const qtyEl = document.getElementById('manual-item-qty');
+  const quantity = Math.max(1, parseInt(qtyEl && qtyEl.value, 10) || 1);
 
   // 商品名も金額も未入力のときは積まない（空アイテムの混入防止）
   if (!name && !priceRaw) return false;
@@ -10699,10 +10741,12 @@ function addManualItem() {
     middle_category: middle,
     middle_category_id: middleId || midNameToId(middle) || null,
     small_category: _manualSmall || '',
-    price
+    price,
+    quantity
   });
   nameEl.value = '';
   priceEl.value = '';
+  if (qtyEl) qtyEl.value = 1;
   renderManualItems();
   nameEl.focus();
   return true;
@@ -10728,7 +10772,7 @@ function renderManualItems() {
         <div style="font-size:13px;word-break:break-all;">${escHtml(item.name) || '<span style="color:var(--text-dim);">商品名なし</span>'}</div>
         <span class="item-cat">${escHtml(resolveCatLabel(item))}</span>
       </div>
-      <span class="item-price" style="font-family:'Space Mono',monospace;white-space:nowrap;">¥${(item.price||0).toLocaleString()}</span>
+      <span class="item-price" style="font-family:'Space Mono',monospace;white-space:nowrap;">${unitPriceHtml(item)}¥${(item.price||0).toLocaleString()}</span>
       <button class="manual-item-del" onclick="deleteManualItem(${idx})" title="削除">✕</button>
     `;
     ul.appendChild(li);
@@ -10873,6 +10917,7 @@ function clearManualEntry() {
   document.getElementById('manual-date').value = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
   document.getElementById('manual-item-name').value = '';
   document.getElementById('manual-item-price').value = '';
+  document.getElementById('manual-item-qty').value = 1;
   renderManualItems();
   // 支出/収入トグルをリセット
   setManualEntryType('expense');
