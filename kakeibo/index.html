@@ -4796,7 +4796,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-22 12:35';
+const APP_BUILD = '2026-09-22 13:00';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -7900,6 +7900,9 @@ function _syncTrackSection() {
 }
 
 async function loadStats() {
+  // 追跡モードで掘り下げていた位置（期間変更などで最上位に戻っても、描画後にここまで掘り直す）
+  const keepDrill = currentGroupMode === 'track' ? _trackDrillState : null;
+  const loadSeq = ++_loadStatsSeq;
   drillMiddle = null;
   drillLarge = null;
   document.getElementById('stats-receipt-list-section').style.display = 'none';
@@ -7930,6 +7933,7 @@ async function loadStats() {
     const records = filterByPeriod(all, currentPeriod);
     updateBalanceBar(records);
     renderStats(records);
+    if (keepDrill) await _restoreTrackDrill(keepDrill, loadSeq);
     await refreshTrack();
   } catch(e) {
     console.error(e);
@@ -9391,7 +9395,8 @@ showDetailFromStats = async function(r) {
 const _origDrillDown_b = drillDown;
 drillDown = async function(middle) {
   await _origDrillDown_b(middle);
-  _pushNavState('stats-drill');
+  // 追跡のドリル位置復元中は積まない（最初に掘ったときの履歴が残っているため）
+  if (!_trackRestoring) _pushNavState('stats-drill');
 };
 
 // ===== カテゴリ追跡：折れ線グラフ描画（段階3〜4） =====
@@ -9444,6 +9449,7 @@ function _trackDataRange(records, match) {
 
 function clearTrack() {
   trackPath = [];
+  _trackDrillState = null;
   const pt = document.getElementById('track-parent-toggle');
   if (pt) pt.style.display = 'none';
   if (trackChart) { trackChart.destroy(); trackChart = null; }
@@ -9467,8 +9473,13 @@ async function renderTrack() {
   const hasParent = shown.length > 1;
   document.getElementById('track-parent-toggle').style.display = hasParent ? '' : 'none';
   const lines = hasParent && !trackShowParent ? shown.slice(-1) : shown;
-  // 親を消したときは選択中カテゴリのデータがある範囲に横軸を絞る（刻みもその範囲で決め直す）
-  const range = hasParent && !trackShowParent ? _trackDataRange(records, lines[0].match) : null;
+  // 親を消したときは選択中カテゴリの最初の購入日から横軸を始める（刻みもその範囲で決め直す）
+  //   終点は期間の終わりのまま。最後の購入以降も「0円（単価モードは点なし）」として表示するため
+  let range = null;
+  if (hasParent && !trackShowParent) {
+    const dr = _trackDataRange(records, lines[0].match);
+    if (dr) range = { from: dr.from, to: getTrackRange(currentPeriod, records).to };
+  }
   const results = lines.map(p => unitMode
     ? aggregateTrackUnitPrice(records, p.match, currentPeriod, range)
     : aggregateTrack(records, HIT, currentPeriod, item => p.match(item) ? HIT : null, range));
@@ -9581,10 +9592,36 @@ function _syncTrackPathFromDrill() {
   trackPath = next;
 }
 
+// --- 期間変更後も追跡のドリル位置を保つ ---
+// _trackDrillState：{ large, middle, small }（どこまで掘っているか）。追跡の操作のたびに更新し、
+//   loadStats() が最上位から描き直した後で _restoreTrackDrill() がこの位置まで掘り直す
+//   var にしているのは、初期化中に loadStats() から先に参照されても TDZ エラーにしないため
+var _trackDrillState = null;
+var _trackRestoring = false;
+var _loadStatsSeq = 0;
+function _saveTrackDrill() {
+  const sm = trackPath.find(p => p.kind === 'small');
+  const small = sm && drillMiddle && sm.middle === drillMiddle ? sm.name : null;
+  _trackDrillState = (drillLarge || drillMiddle) ? { large: drillLarge, middle: drillMiddle, small } : null;
+}
+async function _restoreTrackDrill(st, seq) {
+  const useLarge = largeDef && largeDef.length > 0;
+  _trackRestoring = true;
+  try {
+    // 途中で別の loadStats() が始まったら、そちらに任せて打ち切る
+    if (useLarge && st.large) { await drillDown(st.large); if (seq !== _loadStatsSeq) return; }
+    if (st.middle && (!useLarge || st.large)) { await drillDown(st.middle); if (seq !== _loadStatsSeq) return; }
+    if (st.small && st.middle) await renderSmallDrillReceipts(st.middle, st.small);
+  } finally {
+    _trackRestoring = false;
+  }
+}
+
 // カテゴリ選択で折れ線グラフを描いたら、集計グラフのスクロール位置復元が終わった後に
 // 追跡エリアへ自動スクロールする（実際のスクロールは _keepStatsScroll の最後で行う）
 let _trackAutoScrollPending = false;
 function _requestTrackAutoScroll() {
+  if (_trackRestoring) return; // 期間変更後の掘り直しでは画面を動かさない
   if (currentGroupMode === 'track' && trackChart) _trackAutoScrollPending = true;
 }
 function _doTrackAutoScroll() {
@@ -9602,6 +9639,7 @@ function _doTrackAutoScroll() {
     await _dd.apply(this, arguments);
     if (currentGroupMode !== 'track') return;
     _syncTrackPathFromDrill();
+    _saveTrackDrill();
     await renderTrack();
     _requestTrackAutoScroll();
   };
@@ -9620,6 +9658,7 @@ function _doTrackAutoScroll() {
     _syncTrackPathFromDrill();
     // 小カテゴリは1本だけ（別の小カテゴリを選んだら入れ替え）
     trackPath = trackPath.filter(p => p.kind !== 'small').concat(_trackSmall(middle, small));
+    _saveTrackDrill();
     await renderTrack();
     _requestTrackAutoScroll();
   };
@@ -9628,6 +9667,7 @@ function _doTrackAutoScroll() {
     await _up.apply(this, arguments);
     if (currentGroupMode !== 'track') return;
     _syncTrackPathFromDrill();
+    _saveTrackDrill();
     await renderTrack();
   };
 })();
