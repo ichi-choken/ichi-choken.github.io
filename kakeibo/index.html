@@ -2153,6 +2153,10 @@
   <div class="chart-section" id="stats-track-section" style="display:none;">
     <div class="chart-header">
       <div class="chart-title" id="track-title" style="flex:1;min-width:0;">📈 カテゴリ追跡</div>
+      <button type="button" class="track-unit-toggle active" id="track-parent-toggle" onclick="toggleTrackParent()"
+        aria-pressed="true" title="1つ上のカテゴリの折れ線も重ねて表示" style="display:none;">
+        <span class="track-unit-knob"></span>親カテゴリ
+      </button>
       <button type="button" class="track-unit-toggle" id="track-unit-toggle" onclick="toggleTrackUnitPrice()"
         aria-pressed="false" title="合計ではなく1個あたりの単価をプロット">
         <span class="track-unit-knob"></span>単価推移
@@ -4785,7 +4789,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-21 23:21';
+const APP_BUILD = '2026-09-22 12:05';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -7815,8 +7819,9 @@ function trackCategoryOf(item) {
 // 戻り値：{ unit, buckets:[{key,label,value}], total, undated }
 //   value は表示用に切り上げ済み。total は既存グラフと同じく「未丸めの合計を最後に切り上げ」た値
 //   undated は日付なしでどの枠にも入れられなかった金額（既存グラフには含まれる）
-function aggregateTrack(records, category, period, categoryOf = trackCategoryOf) {
-  const { from, to } = getTrackRange(period, records);
+//   range を渡すと {from, to} をその範囲に置き換える（親カテゴリ非表示時の拡大用）
+function aggregateTrack(records, category, period, categoryOf = trackCategoryOf, range = null) {
+  const { from, to } = range || getTrackRange(period, records);
   const unit = decideTrackUnit(period, from, to);
   const buckets = buildTrackBuckets(from, to, unit);
   const index = new Map(buckets.map((b, i) => [b.key, i]));
@@ -7841,8 +7846,8 @@ function aggregateTrack(records, category, period, categoryOf = trackCategoryOf)
 // 単価の集計：枠ごとに「金額合計 ÷ 個数合計」（個数で重み付けした平均単価）
 //   購入のない枠は null（点なし）。単価は店頭価格を見るため割り勘を反映しない
 // 戻り値：{ unit, buckets:[{key,label,value,qty}], avg, qty, undatedQty }
-function aggregateTrackUnitPrice(records, match, period) {
-  const { from, to } = getTrackRange(period, records);
+function aggregateTrackUnitPrice(records, match, period, range = null) {
+  const { from, to } = range || getTrackRange(period, records);
   const unit = decideTrackUnit(period, from, to);
   const buckets = buildTrackBuckets(from, to, unit);
   const index = new Map(buckets.map((b, i) => [b.key, i]));
@@ -9390,7 +9395,8 @@ let trackPath = [];
 let trackChart = null;
 let trackShowUnitPrice = false; // 単価推移トグル（オン：単価／オフ：合計）
 const TRACK_UNIT_LABEL = { day: '日別', month: '月別', year: '年別' };
-const TRACK_LINE_COLORS = [null, '#57d4ff', '#ff7f57']; // 0番目はテーマのアクセント色
+const TRACK_PARENT_COLOR = '#57d4ff'; // 親カテゴリの線（選択中の線はテーマのアクセント色）
+let trackShowParent = true; // 親カテゴリトグル（オン：1つ上のカテゴリも重ねる／オフ：選択中のみ・横軸を拡大）
 
 function _trackTop(name)    { return { kind: 'top', name, match: item => trackCategoryOf(item) === name }; }
 function _trackMiddle(name) { return { kind: 'middle', name, match: item => resolveMiddleName(item) === name }; }
@@ -9407,8 +9413,32 @@ function toggleTrackUnitPrice() {
   refreshTrack();
 }
 
+function toggleTrackParent() {
+  trackShowParent = !trackShowParent;
+  const btn = document.getElementById('track-parent-toggle');
+  btn.classList.toggle('active', trackShowParent);
+  btn.setAttribute('aria-pressed', String(trackShowParent));
+  refreshTrack();
+}
+
+// match に当たる商品がある日付の最初〜最後（ローカル時刻の Date）。1件もなければ null
+function _trackDataRange(records, match) {
+  let min = null, max = null;
+  (records || []).forEach(r => {
+    if (!r.date || !(r.items || []).some(match)) return;
+    const d = r.date.slice(0, 10);
+    if (min === null || d < min) min = d;
+    if (max === null || d > max) max = d;
+  });
+  if (min === null) return null;
+  const toDate = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  return { from: toDate(min), to: toDate(max) };
+}
+
 function clearTrack() {
   trackPath = [];
+  const pt = document.getElementById('track-parent-toggle');
+  if (pt) pt.style.display = 'none';
   if (trackChart) { trackChart.destroy(); trackChart = null; }
   const c = document.getElementById('track-chart-container');
   if (c) c.style.display = 'none';
@@ -9425,24 +9455,31 @@ async function renderTrack() {
   const records = filterByStatType(filterByPeriod(all, currentPeriod));
   const HIT = '\u0000hit';
   const unitMode = trackShowUnitPrice;
-  const results = trackPath.map(p => unitMode
-    ? aggregateTrackUnitPrice(records, p.match, currentPeriod)
-    : aggregateTrack(records, HIT, currentPeriod, item => p.match(item) ? HIT : null));
+  // 表示するのは「選択中＋1つ親」まで（大›中›小 なら 中 と 小）
+  const shown = trackPath.slice(-2);
+  const hasParent = shown.length > 1;
+  document.getElementById('track-parent-toggle').style.display = hasParent ? '' : 'none';
+  const lines = hasParent && !trackShowParent ? shown.slice(-1) : shown;
+  // 親を消したときは選択中カテゴリのデータがある範囲に横軸を絞る（刻みもその範囲で決め直す）
+  const range = hasParent && !trackShowParent ? _trackDataRange(records, lines[0].match) : null;
+  const results = lines.map(p => unitMode
+    ? aggregateTrackUnitPrice(records, p.match, currentPeriod, range)
+    : aggregateTrack(records, HIT, currentPeriod, item => p.match(item) ? HIT : null, range));
   const unit = results[0].unit;
   const labels = results[0].buckets.map(b => b.label);
-  const multi = trackPath.length > 1;
+  const multi = lines.length > 1;
   const yen = v => v == null ? '—' : `¥${v.toLocaleString()}`;
 
   document.getElementById('track-title').textContent =
     `📈 ${trackPath.map(p => p.name).join(' › ')}の${unitMode ? '単価推移' : '推移'}（${TRACK_UNIT_LABEL[unit]}）`;
   const hint = document.getElementById('track-hint');
   if (unitMode) {
-    const avgs = trackPath.map((p, i) => (multi ? `${p.name} ` : '') + yen(results[i].avg) + `（${results[i].qty}個）`);
+    const avgs = lines.map((p, i) => (multi ? `${p.name} ` : '') + yen(results[i].avg) + `（${results[i].qty}個）`);
     const undatedQty = results[0].undatedQty;
     hint.textContent = `期間平均単価 ${avgs.join(' / ')}` +
       (undatedQty > 0 ? `（日付なし ${undatedQty}個は線に含まれません）` : '');
   } else {
-    const totals = trackPath.map((p, i) => (multi ? `${p.name} ` : '') + yen(results[i].total));
+    const totals = lines.map((p, i) => (multi ? `${p.name} ` : '') + yen(results[i].total));
     const undated = results[0].undated;
     hint.textContent = `期間合計 ${totals.join(' / ')}` +
       (undated > 0 ? `（日付なし ¥${undated.toLocaleString()} は線に含まれません）` : '');
@@ -9451,18 +9488,20 @@ async function renderTrack() {
 
   const container = document.getElementById('track-chart-container');
   container.style.display = 'block';
-  container.style.height = trackPath.length > 1 ? '270px' : '240px'; // 凡例のぶん少し高く
+  container.style.height = multi ? '270px' : '240px'; // 凡例のぶん少し高く
   if (trackChart) { trackChart.destroy(); trackChart = null; }
   const accent = cssVar('--accent') || '#c8ff57';
   const many = labels.length > 31;
-  const datasets = trackPath.map((p, i) => {
-    const color = TRACK_LINE_COLORS[i] || accent;
+  const datasets = lines.map((p, i) => {
+    const isCurrent = i === lines.length - 1; // 最後が選択中のカテゴリ
+    const color = isCurrent ? accent : TRACK_PARENT_COLOR;
     return {
       label: p.name,
       data: results[i].buckets.map(b => b.value),
       borderColor: color,
       backgroundColor: color,
-      borderWidth: i === 0 ? 2.5 : 2,
+      borderWidth: isCurrent ? 2.5 : 2,
+      order: isCurrent ? 0 : 1, // 選択中の線を手前に描く
       pointRadius: many ? 2 : 3,
       pointHoverRadius: 5,
       tension: 0,
@@ -9481,7 +9520,7 @@ async function renderTrack() {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
-          display: trackPath.length > 1,
+          display: multi,
           position: 'top',
           labels: { color: cssVar('--text'), boxWidth: 12, font: { size: 11 } }
         },
