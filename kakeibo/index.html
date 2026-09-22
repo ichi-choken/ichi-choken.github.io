@@ -2153,8 +2153,8 @@
   <div class="chart-section" id="stats-track-section" style="display:none;">
     <div class="chart-header">
       <div class="chart-title" id="track-title" style="flex:1;min-width:0;">📈 カテゴリ追跡</div>
-      <button type="button" class="track-unit-toggle active" id="track-parent-toggle" onclick="toggleTrackParent()"
-        aria-pressed="true" title="1つ上のカテゴリの折れ線も重ねて表示" style="display:none;">
+      <button type="button" class="track-unit-toggle" id="track-parent-toggle" onclick="toggleTrackParent()"
+        aria-pressed="false" title="1つ上のカテゴリの折れ線も重ねて表示" style="display:none;">
         <span class="track-unit-knob"></span>親カテゴリ
       </button>
       <button type="button" class="track-unit-toggle" id="track-unit-toggle" onclick="toggleTrackUnitPrice()"
@@ -4796,7 +4796,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-22 12:15';
+const APP_BUILD = '2026-09-22 12:35';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -9403,7 +9403,7 @@ let trackChart = null;
 let trackShowUnitPrice = false; // 単価推移トグル（オン：単価／オフ：合計）
 const TRACK_UNIT_LABEL = { day: '日別', month: '月別', year: '年別' };
 const TRACK_PARENT_COLOR = '#57d4ff'; // 親カテゴリの線（選択中の線はテーマのアクセント色）
-let trackShowParent = true; // 親カテゴリトグル（オン：1つ上のカテゴリも重ねる／オフ：選択中のみ・横軸を拡大）
+let trackShowParent = false; // 親カテゴリトグル（オン：1つ上のカテゴリも重ねる／オフ：選択中のみ・横軸を拡大）
 
 function _trackTop(name)    { return { kind: 'top', name, match: item => trackCategoryOf(item) === name }; }
 function _trackMiddle(name) { return { kind: 'middle', name, match: item => resolveMiddleName(item) === name }; }
