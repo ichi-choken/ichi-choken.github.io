@@ -4216,6 +4216,11 @@ function createMidTag(midId, lIdx) {
 // ===== 中カテゴリ ドラッグ＆ドロップ（大中エディタ用、PC mouse + スマホ touch 対応） =====
 // ===== 大カテゴリ 縦並びドラッグ＆ドロップ =====
 function initLargeDragDrop(container) {
+  // container（#large-editor-list）は再描画しても同じ要素なので、毎回登録すると
+  // mousedown/touchstart が描画回数ぶん重なり、1回のドラッグで何度も並び替えが走る。
+  // カード一覧は getCards() で毎回取り直すので、登録は最初の1回だけでよい
+  if (container._largeDnDInit) return;
+  container._largeDnDInit = true;
   let dragging = null, ghost = null, offsetX = 0, offsetY = 0, lastTarget = null, didMove = false;
 
   function getCards() { return [...container.querySelectorAll('.large-card')]; }
@@ -4269,6 +4274,7 @@ function initLargeDragDrop(container) {
       const cards = getCards();
       const fromIdx = cards.indexOf(dragging);
       const toIdx   = cards.indexOf(target);
+      if (fromIdx < 0 || toIdx < 0) { dragging = null; return; }
       const r = target.getBoundingClientRect();
       const ghostCy = cy - offsetY + offsetY; // = cy
       const insertBefore = cy < r.top + r.height / 2;
@@ -4384,6 +4390,7 @@ function initMidCardDragDrop(midSection, lIdx) {
       const cards = getCards();
       const fromIdx = cards.indexOf(dragging);
       const toIdx   = cards.indexOf(target);
+      if (fromIdx < 0 || toIdx < 0) { dragging = null; return; }
       const r = target.getBoundingClientRect();
       const insertBefore = cy < r.top + r.height / 2;
       const arr = largeDef[lIdx].middles;
@@ -4789,7 +4796,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-22 12:06';
+const APP_BUILD = '2026-09-22 12:15';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -9897,6 +9904,10 @@ let _catEditorOpenSet = new Set();
 
 function renderCatEditorList() {
   const container = document.getElementById('cat-editor-list');
+  // 中小エディタは大中エディタに統合済みで #cat-editor-list は存在しない。
+  // ここで例外になると、呼び出し元（小カテゴリ追加・中カテゴリ編集・並び替えなど）の
+  // 後続処理（大中エディタの再描画・モーダルを閉じる）が止まるため、要素がなければ何もしない
+  if (!container) return;
   container.innerHTML = '';
   (categoryDef || []).forEach((mid, mIdx) => {
     const isOpen = _catEditorOpenSet.has(mIdx);
