@@ -1240,6 +1240,7 @@
   .track-unit-toggle.active .track-unit-knob { background: var(--accent); }
   .track-unit-toggle.active .track-unit-knob::after { transform: translateX(10px); background: var(--surface); }
   .chart-back-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #stats-track-section { scroll-margin-top: 12px; }
   .chart-hint {
     font-size: 11px;
     color: var(--text-dim);
@@ -9534,6 +9535,20 @@ function _syncTrackPathFromDrill() {
   trackPath = next;
 }
 
+// カテゴリ選択で折れ線グラフを描いたら、集計グラフのスクロール位置復元が終わった後に
+// 追跡エリアへ自動スクロールする（実際のスクロールは _keepStatsScroll の最後で行う）
+let _trackAutoScrollPending = false;
+function _requestTrackAutoScroll() {
+  if (currentGroupMode === 'track' && trackChart) _trackAutoScrollPending = true;
+}
+function _doTrackAutoScroll() {
+  if (!_trackAutoScrollPending) return;
+  _trackAutoScrollPending = false;
+  const sec = document.getElementById('stats-track-section');
+  if (!sec || sec.style.display === 'none' || !trackChart) return;
+  sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // タップ・戻る操作に追跡を差し込む
 (function wrapTrackSelection() {
   const _dd = drillDown;
@@ -9542,6 +9557,7 @@ function _syncTrackPathFromDrill() {
     if (currentGroupMode !== 'track') return;
     _syncTrackPathFromDrill();
     await renderTrack();
+    _requestTrackAutoScroll();
   };
   const _inc = renderIncomeCatReceipts;
   renderIncomeCatReceipts = async function(catName) {
@@ -9549,6 +9565,7 @@ function _syncTrackPathFromDrill() {
     if (currentGroupMode !== 'track') return;
     trackPath = [_trackTop(catName)];
     await renderTrack();
+    _requestTrackAutoScroll();
   };
   const _small = renderSmallDrillReceipts;
   renderSmallDrillReceipts = async function(middle, small) {
@@ -9558,6 +9575,7 @@ function _syncTrackPathFromDrill() {
     // 小カテゴリは1本だけ（別の小カテゴリを選んだら入れ替え）
     trackPath = trackPath.filter(p => p.kind !== 'small').concat(_trackSmall(middle, small));
     await renderTrack();
+    _requestTrackAutoScroll();
   };
   const _up = _drillUpInner;
   _drillUpInner = async function() {
@@ -9571,7 +9589,9 @@ function _syncTrackPathFromDrill() {
 // --- 集計グラフのカテゴリ選択で画面が勝手に動かないようにする ---
 // 描き直し中は一覧が空になってページが縮み、ブラウザがスクロール位置を詰めてしまうため、
 // 実行中は集計タブの高さを固定し、終わったら元のスクロール位置に戻す。
+let _keepStatsScrollDepth = 0; // 入れ子・二重発火時は一番外側だけが自動スクロールを行う
 async function _keepStatsScroll(fn) {
+  _keepStatsScrollDepth++;
   const y = window.scrollY;
   const tab = document.getElementById('tab-stats');
   const prevMin = tab.style.minHeight;
@@ -9579,10 +9599,13 @@ async function _keepStatsScroll(fn) {
   try {
     return await fn();
   } finally {
+    _keepStatsScrollDepth--;
+    const outermost = _keepStatsScrollDepth === 0;
     window.scrollTo(0, y);
     requestAnimationFrame(() => {
       tab.style.minHeight = prevMin;
       window.scrollTo(0, y); // 高さ固定を外した後も、届く範囲で同じ位置を保つ
+      if (outermost) _doTrackAutoScroll(); // 位置を戻した後で折れ線グラフへ移動
     });
   }
 }
