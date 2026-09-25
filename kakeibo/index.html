@@ -1040,7 +1040,7 @@
   .period-nav-btn:disabled { opacity: 0.25; cursor: default; }
 
   .stats-summary {
-    display: flex;
+    display: none; /* 上部の支出表示と重複するため非表示（再表示は flex に戻す） */
     gap: 10px;
     padding: 12px 16px;
   }
@@ -4796,7 +4796,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-09-25 12:00';
+const APP_BUILD = '2026-09-25 12:10';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
