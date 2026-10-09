@@ -2592,6 +2592,9 @@
     <div class="modal-title" id="add-store-title">＋ 店を追加</div>
     <div class="modal-label">店名</div>
     <input type="text" id="add-store-input" placeholder="例：アピタ">
+    <div class="modal-label" style="margin-top:10px;">別表記（任意・「、」か「,」区切り）</div>
+    <input type="text" id="add-store-aliases" placeholder="例：APITA、Apita">
+    <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">レシートでこの表記が読み取られたときも、上の店名に揃えて保存します。大文字小文字・全角半角・ひらがなカタカナの違いは自動で同一視します。</div>
     <button class="btn btn-primary" onclick="saveStoreDef()">保存</button>
     <button class="btn btn-secondary" onclick="closeModal('add-store-modal')">キャンセル</button>
   </div>
@@ -3330,18 +3333,148 @@ function updateStoreDefStatus() {
   el.style.color = stores.length > 0 ? 'var(--accent)' : 'var(--text-dim)';
 }
 
-// レシート保存時に store_brand を自動登録し、idを返す
+// ===== 店舗名の表記ゆれ統合 =====
+// 各店エントリは {id, name, aliases?:[別表記...]} 。
+// 「Welcia / welcia / ウエルシア」のような別表記は aliases に持たせ、保存時に name へ揃える。
+// 大小文字・全角半角・ひらがな/カタカナ・空白や記号の違いは _normStoreText で自動的に同一視する。
+function _storeKey(name) { return _normStoreText(name); }
+
+// name に該当する店エントリを返す（完全一致 → 別表記一致 → 正規化キー一致の順）
+function findStoreEntry(name, stores) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  stores = stores || loadStoreDefFromStorage();
+  let e = stores.find(s => s.name === n);
+  if (e) return e;
+  e = stores.find(s => (s.aliases || []).includes(n));
+  if (e) return e;
+  const k = _storeKey(n);
+  if (!k) return null;
+  return stores.find(s => _storeKey(s.name) === k || (s.aliases || []).some(a => _storeKey(a) === k)) || null;
+}
+
+// 一覧などに出す店名。店名が null の収入はカテゴリ名、それ以外は「不明」
+function storeDisplayName(r) {
+  if (r && r.store) return r.store;
+  if (r && r.entry_type === 'income') {
+    const c = (r.items || [])[0]?.middle_category;
+    if (c) return c;
+  }
+  return '不明';
+}
+
+// 店名として扱わない名前（商品・収入カテゴリ名や、店を特定できない一般語）
+const _STORE_GENERIC_WORDS = ['不明', '手入力', '店舗', '店名', '収入', '支出', 'その他', 'レシート', '領収書', '領収証', 'null', 'none', 'unknown'];
+function isNonStoreName(name) {
+  const n = String(name || '').trim();
+  if (!n) return true;
+  const k = _storeKey(n);
+  if (!k) return true;
+  if (_STORE_GENERIC_WORDS.some(w => _storeKey(w) === k)) return true;
+  const catNames = [];
+  try { (categoryDef || []).forEach(m => catNames.push(m.middle)); } catch (_) {}
+  try { (largeDef || []).forEach(l => catNames.push(l.large)); } catch (_) {}
+  try { loadIncomeCategories().forEach(c => catNames.push(c)); } catch (_) {}
+  return catNames.some(c => c && _storeKey(c) === k);
+}
+
+// Gemini などが返した店名を整える：店名でなければ null、表記ゆれは登録済みの表記へ
+function cleanStoreBrand(name) {
+  if (name === null || name === undefined) return null;
+  const n = String(name).trim();
+  if (isNonStoreName(n)) return null;
+  return resolveStoreBrandName(n);
+}
+
+// 表記ゆれを吸収した正式な店ブランド名を返す（未登録ならそのまま）
+function resolveStoreBrandName(name) {
+  const n = String(name || '').trim();
+  if (!n) return n;
+  const e = findStoreEntry(n);
+  return e ? e.name : n;
+}
+
+// 重複エントリ（別表記・正規化キーが同じもの）を1つにまとめる。変更があれば true
+function dedupeStoreDef(stores) {
+  const out = [];
+  let changed = false;
+  // 別表記を持つエントリを先に処理して、そちらを正とする
+  const ordered = stores.slice().sort((a, b) => ((b.aliases || []).length > 0) - ((a.aliases || []).length > 0));
+  ordered.forEach(e => {
+    const target = out.find(o =>
+      o.name === e.name ||
+      (o.aliases || []).includes(e.name) ||
+      _storeKey(o.name) === _storeKey(e.name) ||
+      (o.aliases || []).some(a => _storeKey(a) === _storeKey(e.name)));
+    if (!target) { out.push({ ...e, aliases: (e.aliases || []).slice() }); return; }
+    changed = true;
+    const add = [e.name, ...(e.aliases || [])].filter(a => a && a !== target.name);
+    target.aliases = [...new Set([...(target.aliases || []), ...add])];
+  });
+  out.forEach(o => { if (!o.aliases || o.aliases.length === 0) delete o.aliases; });
+  out.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  stores.length = 0;
+  out.forEach(o => stores.push(o));
+  return changed;
+}
+
+// レシート保存時に store_brand を自動登録し、idを返す（表記ゆれは既存エントリに寄せる）
 function autoRegisterStoreBrand(brand) {
   if (!brand || !brand.trim()) return null;
   const name = brand.trim();
+  // カテゴリ名などは店として登録しない
+  if (isNonStoreName(name)) return null;
   const stores = loadStoreDefFromStorage();
-  const existing = stores.find(s => s.name === name);
-  if (existing) return existing.id;
+  const existing = findStoreEntry(name, stores);
+  if (existing) {
+    // 初めて見た別表記は aliases に覚えておく（次回から完全一致で引ける）
+    if (existing.name !== name && !(existing.aliases || []).includes(name)) {
+      existing.aliases = [...(existing.aliases || []), name];
+      _saveStoreDefData(stores);
+    }
+    return existing.id;
+  }
   const newEntry = { id: _genStoreId(), name };
   stores.push(newEntry);
   stores.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   _saveStoreDefData(stores);
   return newEntry.id;
+}
+
+// レシートの store_brand を正式名に揃える（表記ゆれ・別表記を統合）。書き換えた件数を返す
+async function migrateStoreBrandsInRecords(records) {
+  const stores = loadStoreDefFromStorage();
+  if (dedupeStoreDef(stores)) _saveStoreDefData(stores);
+  records = records || await dbGetAll('receipts');
+  let n = 0;
+  for (const r of records) {
+    const b = (r.store_brand || '').trim();
+    if (!b) continue;
+    // カテゴリ名などが店ブランドに入っている古いデータは null に戻す
+    if (isNonStoreName(b)) {
+      r.store_brand = null;
+      r.store_brand_id = null;
+      await dbPut('receipts', r);
+      n++;
+      continue;
+    }
+    const e = findStoreEntry(b, stores);
+    if (e && (e.name !== r.store_brand || e.id !== r.store_brand_id)) {
+      r.store_brand = e.name;
+      r.store_brand_id = e.id;
+      await dbPut('receipts', r);
+      n++;
+    }
+  }
+  return n;
+}
+
+// Gemini に渡す登録済みブランド一覧（この表記に揃えさせる）
+function knownStoreBrandsPromptText() {
+  const names = loadStoreDefFromStorage().map(s => s.name);
+  if (names.length === 0) return '';
+  return `- 次の登録済みブランドに該当する場合は、英字/カタカナ・大小文字などの表記に関わらず、必ずこの一覧の表記をそのまま使うこと：
+  ${names.map(n => `「${n}」`).join('、')}`;
 }
 
 // 店カテゴリエディタ
@@ -3367,23 +3500,35 @@ function openStoreEditor() {
           throw new Error(`[${i}].name が不正です`);
         }
       }
-      const existing = loadStoreDefFromStorage();
-      // 既存と名前照合して追加/上書き（id保持・重複スキップ）
+      // 置き換え：今の店カテゴリを捨てて、このファイルの内容だけにする
+      const replace = confirm('今の店カテゴリを、このファイルの内容で置き換えますか？\n\nOK：置き換える（ファイルに無い店は消えます）\nキャンセル：今の一覧に追加する');
+      const existing = replace ? [] : loadStoreDefFromStorage();
+      // 既存と名前照合して追加/上書き（id保持・重複スキップ）。別表記（aliases）は合流させる
       let addCount = 0, skipCount = 0;
       data.forEach(entry => {
         const name = entry.name.trim();
+        const aliases = Array.isArray(entry.aliases) ? entry.aliases.map(a => String(a).trim()).filter(Boolean) : [];
         const found = existing.find(s => s.name === name);
         if (!found) {
-          existing.push({ id: entry.id || _genStoreId(), name });
+          existing.push({ id: entry.id || _genStoreId(), name, ...(aliases.length ? { aliases } : {}) });
           addCount++;
         } else {
+          if (aliases.length) found.aliases = [...new Set([...(found.aliases || []), ...aliases])];
           skipCount++;
         }
       });
+      // 別表記として登録された既存エントリを正式名へまとめる
+      const before = existing.length;
+      dedupeStoreDef(existing);
+      const mergedCount = before - existing.length;
       _saveStoreDefData(existing);
       renderStoreEditorList();
       storeImport.value = '';
-      alert(`インポート完了：${addCount}件追加、${skipCount}件スキップ（重複）`);
+      let fixed = 0;
+      try { fixed = await migrateStoreBrandsInRecords(); } catch (e3) { console.warn(e3); }
+      alert(`インポート完了：${addCount}件追加、${skipCount}件スキップ（重複）` +
+        (mergedCount ? `\n表記ゆれ ${mergedCount}件を統合` : '') +
+        (fixed ? `\nレシート ${fixed}件の店名を統一` : ''));
     } catch(e2) {
       alert(`読み込みエラー：${e2.message}`);
       storeImport.value = '';
@@ -3418,7 +3563,7 @@ function renderStoreEditorList() {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);';
     row.innerHTML = `
-      <span style="flex:1;font-size:14px;">🏪 ${escHtml(entry.name)}</span>
+      <span style="flex:1;font-size:14px;min-width:0;">🏪 ${escHtml(entry.name)}${(entry.aliases && entry.aliases.length) ? `<span style="display:block;font-size:11px;color:var(--text-dim);margin-top:2px;">別表記：${entry.aliases.map(escHtml).join('、')}</span>` : ''}</span>
       <button onclick="openEditStoreModal(${idx})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:12px;padding:4px 10px;border-radius:6px;">✏️</button>
       <button onclick="deleteStoreDef(${idx})" style="background:none;border:1px solid var(--danger);color:var(--danger);cursor:pointer;font-size:12px;padding:4px 10px;border-radius:6px;">🗑</button>
     `;
@@ -3430,6 +3575,7 @@ var openAddStoreModal = function() {
   storeEditIndex = null;
   document.getElementById('add-store-title').textContent = '＋ 店を追加';
   document.getElementById('add-store-input').value = '';
+  document.getElementById('add-store-aliases').value = '';
   document.getElementById('add-store-modal').classList.add('open');
   setTimeout(() => document.getElementById('add-store-input').focus(), 50);
 };
@@ -3439,6 +3585,7 @@ var openEditStoreModal = function(idx) {
   const stores = loadStoreDefFromStorage();
   document.getElementById('add-store-title').textContent = '✏️ 店名を編集';
   document.getElementById('add-store-input').value = stores[idx]?.name || '';
+  document.getElementById('add-store-aliases').value = (stores[idx]?.aliases || []).join('、');
   document.getElementById('add-store-modal').classList.add('open');
   setTimeout(() => document.getElementById('add-store-input').focus(), 50);
 };
@@ -3447,20 +3594,27 @@ function saveStoreDef() {
   const name = document.getElementById('add-store-input').value.trim();
   if (!name) { alert('店名を入力してください'); return; }
   const stores = loadStoreDefFromStorage();
+  let aliases = (document.getElementById('add-store-aliases').value || '')
+    .split(/[、,，]/).map(a => a.trim()).filter(a => a && a !== name);
 
   if (storeEditIndex === null) {
     if (stores.some(s => s.name === name)) { alert('同じ名前の店が既に登録されています'); return; }
-    stores.push({ id: _genStoreId(), name });
+    stores.push({ id: _genStoreId(), name, ...(aliases.length ? { aliases: [...new Set(aliases)] } : {}) });
   } else {
     const old = stores[storeEditIndex];
     if (name !== old.name && stores.some(s => s.name === name)) { alert('同じ名前の店が既に登録されています'); return; }
-    stores[storeEditIndex] = { id: old.id, name }; // idを保持したまま名前だけ変更
+    // 改名したら旧名は別表記に残し、既存レシートも新しい名前に寄せられるようにする
+    if (name !== old.name) aliases.push(old.name);
+    aliases = [...new Set(aliases)].filter(a => a !== name);
+    stores[storeEditIndex] = { id: old.id, name, ...(aliases.length ? { aliases } : {}) }; // idを保持
   }
-  stores.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  // 別表記に挙げた店が別エントリとして登録済みなら1つにまとめる
+  dedupeStoreDef(stores);
   localStorage.setItem(STORE_DEF_KEY, JSON.stringify(stores));
   updateStoreDefStatus();
   renderStoreEditorList();
   closeModal('add-store-modal');
+  migrateStoreBrandsInRecords().catch(e => console.warn(e));
 }
 
 function deleteStoreDef(idx) {
@@ -4913,7 +5067,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 16:20';
+const APP_BUILD = '2026-10-09 16:35';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -5660,8 +5814,8 @@ small_category（小カテゴリ）: 居酒屋メニューレベルの一般名�
     const prompt = `このレシート画像を読み取り、以下のJSON形式のみで返してください。他のテキストは一切不要です。
 
 {
-  "store": "店舗名（レシートに記載の正式名称。例：アピタ名古屋）",
-  "store_brand": "チェーン・ブランド名（地名・番号・支店名などを除いた共通名称。例：アピタ）",
+  "store": "店舗名（レシートに記載の正式名称。例：アピタ名古屋）。店名が読み取れなければ null",
+  "store_brand": "チェーン・ブランド名（地名・番号・支店名などを除いた共通名称。例：アピタ）。判別できなければ null",
   "date": "YYYY-MM-DD",
   "time": "HH:MM",
   "total": 合計金額(数値),
@@ -5682,7 +5836,10 @@ store_brand（チェーン・ブランド名）の抽出ルール：
 - store（正式店舗名）から地名・番号・支店名・方角などを除いた、チェーン共通の名称を入れること
 - 例：「アピタ名古屋」→「アピタ」、「イオン八事店」→「イオン」、「セブン-イレブン渋谷3丁目店」→「セブン-イレブン」
 - 例：「マクドナルド梅田店」→「マクドナルド」、「スターバックスコーヒー表参道店」→「スターバックスコーヒー」
-- 個人店・ブランド判別困難な場合はstoreと同じ値を入れる（nullにしない）
+- 個人店で店名が読み取れている場合は store と同じ値を入れる
+- 店名がレシートに印字されていない・読み取れない場合は store・store_brand とも null にする（商品カテゴリ名や「スーパー」「コンビニ」などの一般語、推測した名前で埋めないこと）
+- 支店名・住所・電話番号だけで、チェーン名が分からない場合も store_brand は null
+${knownStoreBrandsPromptText()}
 
 注意：
 - dateが読み取れない場合は今日の日付
@@ -5744,6 +5901,9 @@ ${prompt}`
     const clean = text.replace(/```json|```/g, '').trim();
     parsedData = JSON.parse(clean);
     stripTotalRowFromItems(parsedData);
+    // 店ブランドの表記ゆれを登録済みの表記に揃える（例：welcia → ウエルシア）。店名でないものは null
+    parsedData.store = (parsedData.store && String(parsedData.store).trim() && !isNonStoreName(parsedData.store)) ? String(parsedData.store).trim() : null;
+    parsedData.store_brand = cleanStoreBrand(parsedData.store_brand);
 
     if (!parsedData.items || parsedData.items.length === 0) {
       parsedData = null;
@@ -6018,7 +6178,8 @@ async function saveReceipt() {
   pauseAutoSave();
   try {
     // store_brand を店カテゴリに自動登録し、idを取得
-    const storeBrandId = autoRegisterStoreBrand(parsedData.store_brand);
+    parsedData.store_brand = cleanStoreBrand(parsedData.store_brand);
+    const storeBrandId = parsedData.store_brand ? autoRegisterStoreBrand(parsedData.store_brand) : null;
     // 各商品にmiddle_category_idを付与
     const items = (parsedData.items || []).map(item => ({
       ...withQuantity(item),
@@ -6160,6 +6321,8 @@ async function loadHistory() {
   list.innerHTML = '';
   try {
     const records = await dbGetAll('receipts');
+    // 店ブランドの表記ゆれ（別表記）を正式名に揃える
+    try { await migrateStoreBrandsInRecords(records); } catch (e) { console.warn('店名統合に失敗', e); }
     // store_brandがあるレシートのブランド名のみstore_defに登録（store_brandなしは対象外）
     // 過去に r.store で誤登録された分もここでクリーンアップ
     const validBrands = new Set(
@@ -6174,7 +6337,8 @@ async function loadHistory() {
     // 未登録のstore_brandを追加（idなし既存レコードの補完）
     let migrated = false;
     validBrands.forEach(brand => {
-      if (!stores.some(s => s.name === brand)) {
+      if (isNonStoreName(brand)) return;
+      if (!findStoreEntry(brand, stores)) {
         stores.push({ id: _genStoreId(), name: brand });
         migrated = true;
       }
@@ -6277,7 +6441,7 @@ async function loadHistory() {
         : '';
       li.innerHTML = `
         <div class="history-left">
-          <div class="history-store">${r.store || '不明'}</div>
+          <div class="history-store">${escHtml(storeDisplayName(r))}</div>
           ${(() => {
             const brand = (r.store_brand || '').trim();
             const store = (r.store || '').trim();
@@ -6532,7 +6696,7 @@ function showCalDayPanel(dateStr, records, opts = {}) {
     const left = document.createElement('div');
     left.className = 'history-left';
     left.innerHTML = `
-      <div class="history-store">${escHtml(r.store || '不明')}</div>
+      <div class="history-store">${escHtml(storeDisplayName(r))}</div>
       <div class="history-date">${r.time || ''}</div>`;
 
     const right = document.createElement('div');
@@ -6718,7 +6882,7 @@ function _renderDetail() {
   const totalEl  = document.getElementById(ctx === 'stats' ? 'stats-detail-total'  : 'detail-total');
   const container= document.getElementById(ctx === 'stats' ? 'stats-detail-items'  : 'detail-items');
 
-  storeEl.textContent = r.store || '不明';
+  storeEl.textContent = storeDisplayName(r);
   // store_brand の補足表示
   const brandElId = ctx === 'stats' ? 'stats-detail-store-brand' : 'detail-store-brand';
   const brandDetailEl = document.getElementById(brandElId);
@@ -6838,7 +7002,11 @@ async function saveReceiptEdit() {
 
   if (isPreview) {
     // parsedData を直接更新
-    if (newStore) parsedData.store = newStore;
+    if (newStore) {
+      parsedData.store = newStore;
+      // ブランド未判定なら、入力した店名から登録済みブランドを引く（表記ゆれも吸収）
+      if (!parsedData.store_brand) parsedData.store_brand = cleanStoreBrand(newStore);
+    }
     if (newDate)  parsedData.date = newDate;
     parsedData.time = newTime;
     closeModal('receipt-edit-modal');
@@ -8761,7 +8929,7 @@ async function renderStoreReceipts(storeName, records) {
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       li.innerHTML = `
         <div class="history-left">
-          <div class="history-store">${r.store || '不明'}</div>
+          <div class="history-store">${escHtml(storeDisplayName(r))}</div>
           <div class="history-date">${dateTime}</div>
         </div>
         <div class="history-right">
@@ -9002,7 +9170,7 @@ async function renderLargeDrillReceipts(large, midIdToLarge, records) {
         : '';
       li.innerHTML = `
         <div class="history-left">
-          <div class="history-store">${r.store || '不明'}</div>
+          <div class="history-store">${escHtml(storeDisplayName(r))}</div>
           <div class="history-date">${dateTime}</div>
           ${itemLabel ? `<div class="history-date" style="margin-top:3px;color:var(--text-dim);font-size:11px;">${itemLabel}</div>` : ''}
         </div>
@@ -9063,7 +9231,7 @@ async function renderMiddleDrillReceipts(middle, records) {
         : '';
       li.innerHTML = `
         <div class="history-left">
-          <div class="history-store">${r.store || '不明'}</div>
+          <div class="history-store">${escHtml(storeDisplayName(r))}</div>
           <div class="history-date">${dateTime}</div>
           ${itemLabel ? `<div class="history-date" style="margin-top:3px;color:var(--text-dim);font-size:11px;">${itemLabel}</div>` : ''}
         </div>
@@ -9125,7 +9293,7 @@ async function renderSmallDrillReceipts(middle, small) {
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       li.innerHTML = `
         <div class="history-left">
-          <div class="history-store">${r.store || '不明'}</div>
+          <div class="history-store">${escHtml(storeDisplayName(r))}</div>
           <div class="history-date">${dateTime}</div>
         </div>
         <div class="history-right">
@@ -10374,9 +10542,10 @@ ${largeHintText}
 - 全商品を必ず分類すること
 
 また、店名から store_brand（チェーン・ブランド名）も抽出してください。
+${knownStoreBrandsPromptText()}
 
 JSONのみ返してください（説明文・マークダウン・コードブロック不要）。形式：
-{"store_brand":"チェーン名（例：アピタ、イオン、セブン-イレブン。判別困難なら店名と同じ値）","items":[{"index":0,"middle_category":"...","small_category":"..."},...]}`;
+{"store_brand":"チェーン名（例：アピタ、イオン、セブン-イレブン。店名が無い・判別できなければ null）","items":[{"index":0,"middle_category":"...","small_category":"..."},...]}`;
 
     const _geminiUrl2 = `https://generativelanguage.googleapis.com/v1beta/models/${localStorage.getItem('gemini_model') || 'gemini-2.5-flash'}:generateContent?key=${apiKey}`;
     const _geminiBody2 = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
@@ -10433,8 +10602,11 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
 
     // store_brand を更新（値があり、かつ空文字でなければ）
     if (!opts.skipStoreBrand && record.store && newStoreBrand && newStoreBrand.trim()) {
-      record.store_brand = newStoreBrand.trim();
-      record.store_brand_id = autoRegisterStoreBrand(newStoreBrand.trim()) || record.store_brand_id || null;
+      const _canon = cleanStoreBrand(newStoreBrand.trim());
+      if (_canon) {
+        record.store_brand = _canon;
+        record.store_brand_id = autoRegisterStoreBrand(_canon) || record.store_brand_id || null;
+      }
     }
 
     // カテゴリ検証＆フォールバック付きで更新
@@ -11553,7 +11725,8 @@ async function saveManualReceipt() {
   if (_manualEntryType === 'income') {
     // 収入：件名は選択中のカテゴリ名
     const catLabel = document.getElementById('manual-cat-label');
-    store = (catLabel && catLabel.textContent.trim()) ? catLabel.textContent.trim() : '収入';
+    // 収入は店ではないので店名は null（表示側でカテゴリ名を出す）
+    store = null;
   } else if (!store || store === '手入力' || store === '店舗を選択') {
     // 店舗未選択ならカテゴリ名などで埋めず null のままにする
     store = null;
@@ -11567,7 +11740,8 @@ async function saveManualReceipt() {
   if (!date)  { showManualStatus('error', '日付を入力してください'); return; }
 
   try {
-    const storeBrandId = store ? autoRegisterStoreBrand(store) : null;
+    const storeBrand = store ? cleanStoreBrand(store) : null;
+    const storeBrandId = storeBrand ? autoRegisterStoreBrand(storeBrand) : null;
     // 収入の場合は price を負値にして保存（集計で区別）
   const sign = _manualEntryType === 'income' ? -1 : 1;
   // 自動カテゴライズ対象の商品 index を控え、保存データからは印を外す
@@ -11580,7 +11754,7 @@ async function saveManualReceipt() {
   const total = signedItems.reduce((s, i) => s + (i.price || 0), 0);
     const newId = await dbAdd('receipts', {
       store,
-      store_brand: store,
+      store_brand: storeBrand,
       store_brand_id: storeBrandId || null,
       date,
       time,
@@ -11932,8 +12106,8 @@ function rebuildStoreDropdown(query) {
   let hits = stores;
   if (q) {
     hits = stores
-      .map(s => ({ s, n: _normStoreText(s.name) }))
-      .filter(x => x.n.includes(q))
+      .map(s => ({ s, n: _normStoreText(s.name), al: (s.aliases || []).map(_normStoreText) }))
+      .filter(x => x.n.includes(q) || x.al.some(a => a.includes(q)))
       .sort((a, b) => (a.n.startsWith(q) ? 0 : 1) - (b.n.startsWith(q) ? 0 : 1))
       .map(x => x.s);
   }
