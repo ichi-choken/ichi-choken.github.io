@@ -3347,7 +3347,7 @@ const BUILTIN_STORE_GROUPS = [
   ['ミニストップ', 'MINISTOP'],
   ['Daily YAMAZAKI', 'デイリーヤマザキ'],
   ['ウエルシア', 'Welcia', 'ウェルシア'],
-  ['アピタ', 'APITA', 'APITA POWER', 'アピタパワー'],
+  ['アピタ', 'APITA', 'APITA POWER', 'アピタパワー', 'アビタ', 'ピタパワー', 'アビタパワー'],
   ['ピアゴ', 'PIAGO'],
   ['イオン', 'AEON'],
   ['ダイソー', 'DAISO'],
@@ -3357,16 +3357,16 @@ const BUILTIN_STORE_GROUPS = [
   ['ロフト', 'Loft'],
   ['無印良品', 'MUJI'],
   ['ユニクロ', 'UNIQLO'],
-  ['ジーユー', 'GU'],
+  ['GU', 'ジーユー'],
   ['グローバルワーク', 'GLOBAL WORK'],
   ['スガキヤ', 'Sugakiya', 'Sugakiya スガキヤ'],
   ['TOHOシネマズ', 'TOHO CINEMAS'],
   ['モスバーガー', 'MOS BURGER', 'MOS'],
   ['マクドナルド', "McDonald's", 'McDonalds', 'マック'],
-  ['ケンタッキーフライドチキン', 'KFC', 'Kentucky Fried Chicken', 'ケンタッキー'],
+  ['KFC', 'ケンタッキーフライドチキン', 'Kentucky Fried Chicken', 'ケンタッキー'],
   ['ミスタードーナツ', 'Mister Donut', 'ミスド'],
   ['スターバックス', 'STARBUCKS', 'スターバックスコーヒー', 'スタバ'],
-  ['サブウェイ', 'SUBWAY'],
+  ['SUBWAY', 'サブウェイ'],
   ['ドン・キホーテ', 'DON QUIJOTE', 'ドンキ'],
   ['ベルマート', 'Bellmart'],
   ['プラスタギフト', 'PLUSTA Gift'],
@@ -3378,6 +3378,8 @@ const BUILTIN_STORE_GROUPS = [
   ['マックスバリュ', 'MaxValu', 'マックスバリュー'],
   ['ココカラファイン', 'cocokara fine'],
   ['DCM', 'dcm', 'ディーシーエム'],
+  ['campfire', 'Campfire', 'CAMPFIRE', 'キャンプファイヤー'],
+  ['メルカリ', 'mercari', 'Mercari', '売却・フリマ'],
 ];
 // 名前が属する組み込みグループの index（なければ -1）
 function _builtinStoreGroupOf(name) {
@@ -3393,8 +3395,10 @@ function _isMemoVariantOf(name, base) {
   return /^(　|、|,|\s{2,})/.test(n.slice(b.length));
 }
 function _sameBuiltinGroup(a, b) {
-  const ga = _builtinStoreGroupOf(a);
-  return ga >= 0 && ga === _builtinStoreGroupOf(b);
+  const head = t => String(t || '').split(/　|、|,|\s{2,}/)[0].trim();
+  const ga = _builtinStoreGroupOf(a) >= 0 ? _builtinStoreGroupOf(a) : _builtinStoreGroupOf(head(a));
+  const gb = _builtinStoreGroupOf(b) >= 0 ? _builtinStoreGroupOf(b) : _builtinStoreGroupOf(head(b));
+  return ga >= 0 && ga === gb;
 }
 
 // name に該当する店エントリを返す（完全一致 → 別表記一致 → 正規化キー一致 → 組み込み別表記の順）
@@ -3410,10 +3414,12 @@ function findStoreEntry(name, stores) {
   if (!k) return null;
   e = stores.find(s => _storeKey(s.name) === k || (s.aliases || []).some(a => _storeKey(a) === k));
   if (e) return e;
-  e = stores.find(s => _isMemoVariantOf(n, s.name));
+  e = stores.find(s => _isMemoVariantOf(n, s.name) || (s.aliases || []).some(a => _isMemoVariantOf(n, a)));
   if (e) return e;
-  if (_builtinStoreGroupOf(n) < 0) return null;
-  return stores.find(s => _sameBuiltinGroup(n, s.name) || (s.aliases || []).some(a => _sameBuiltinGroup(n, a))) || null;
+  const head = n.split(/　|、|,|\s{2,}/)[0].trim();
+  const probe = (_builtinStoreGroupOf(n) >= 0) ? n : ((head && head !== n && _builtinStoreGroupOf(head) >= 0) ? head : null);
+  if (!probe) return null;
+  return stores.find(s => _sameBuiltinGroup(probe, s.name) || (s.aliases || []).some(a => _sameBuiltinGroup(probe, a))) || null;
 }
 
 // 一覧などに出す店名。店名が null の収入はカテゴリ名、それ以外は「不明」
@@ -3427,10 +3433,17 @@ function storeDisplayName(r) {
 }
 
 // 店名として扱わない名前（商品・収入カテゴリ名や、店を特定できない一般語）
-const _STORE_GENERIC_WORDS = ['不明', '手入力', '店舗', '店名', '収入', '支出', 'その他', 'レシート', '領収書', '領収証', 'null', 'none', 'unknown'];
+const _STORE_GENERIC_WORDS = ['不明', '手入力', '店舗', '店名', '収入', '支出', 'その他', 'レシート', '領収書', '領収証',
+  'null', 'none', 'unknown', '定期', '定期券', '水道', 'お菓子', 'チャージ',
+  'コンビニ', 'スーパー', 'ドラッグストア', '外食', '食費', '交通費', '駐車場', '家賃', '仕送り', 'サブスク'];
+// カテゴリ名でも店として残す名前（「立替」を含むもの）
+function _isKeptPseudoStore(n) { return /立替/.test(String(n || '')); }
 function isNonStoreName(name) {
   const n = String(name || '').trim();
   if (!n) return true;
+  if (_isKeptPseudoStore(n)) return false;
+  // 「売却・フリマ」などメルカリに寄せる名前は店扱い（組み込み辞書で正式名に変換される）
+  if (_builtinStoreGroupOf(n) >= 0) return false;
   const k = _storeKey(n);
   if (!k) return true;
   if (_STORE_GENERIC_WORDS.some(w => _storeKey(w) === k)) return true;
@@ -3441,10 +3454,20 @@ function isNonStoreName(name) {
   return catNames.some(c => c && _storeKey(c) === k);
 }
 
+// 店名から日付・絵文字・余分な空白を取り除く（例：「東横イン🅿️　3/27~29」→「東横イン」）
+function sanitizeStoreName(name) {
+  if (name === null || name === undefined) return name;
+  return String(name)
+    .replace(/\p{Extended_Pictographic}|\uFE0F|\u200D|[\u{1F170}-\u{1F251}]/gu, '')
+    .replace(/\d{1,4}[\/\-.年]\d{1,2}(?:[\/\-.月]\d{1,2}日?)?(?:\s*[~〜～\-]\s*\d{1,2}(?:[\/\-.月]\d{1,2}日?)?)?/g, '')
+    .replace(/[\s　]+$/g, '').replace(/^[\s　]+/g, '')
+    .replace(/[ ]{2,}/g, ' ');
+}
+
 // Gemini などが返した店名を整える：店名でなければ null、表記ゆれは登録済みの表記へ
 function cleanStoreBrand(name) {
   if (name === null || name === undefined) return null;
-  const n = String(name).trim();
+  const n = sanitizeStoreName(String(name).trim());
   if (isNonStoreName(n)) return null;
   return resolveStoreBrandName(n);
 }
@@ -3473,7 +3496,8 @@ function dedupeStoreDef(stores) {
       _storeKey(o.name) === _storeKey(e.name) ||
       (o.aliases || []).some(a => _storeKey(a) === _storeKey(e.name)) ||
       _sameBuiltinGroup(o.name, e.name) ||
-      _isMemoVariantOf(e.name, o.name));
+      _isMemoVariantOf(e.name, o.name) ||
+      (o.aliases || []).some(a => _isMemoVariantOf(e.name, a)));
     if (!target) { out.push({ ...e, aliases: (e.aliases || []).slice() }); return; }
     changed = true;
     // 組み込みの正式名を優先して名前に採用する（例：MOS BURGER と モスバーガー → モスバーガー）
@@ -3484,6 +3508,17 @@ function dedupeStoreDef(stores) {
     }
     const add = [e.name, ...(e.aliases || [])].filter(a => a && a !== target.name);
     target.aliases = [...new Set([...(target.aliases || []), ...add])].filter(a => a !== target.name);
+  });
+  // 組み込み辞書の別表記だけで登録されている店は正式名に改名（例：売却・フリマ → メルカリ）
+  out.forEach(o => {
+    const g = _builtinStoreGroupOf(o.name);
+    if (g < 0) return;
+    const canon = BUILTIN_STORE_GROUPS[g][0];
+    if (o.name !== canon && !out.some(x => x !== o && x.name === canon)) {
+      o.aliases = [...new Set([...(o.aliases || []), o.name])];
+      o.name = canon;
+      changed = true;
+    }
   });
   out.forEach(o => { if (!o.aliases || o.aliases.length === 0) delete o.aliases; });
   out.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -3517,10 +3552,14 @@ function autoRegisterStoreBrand(brand) {
 
 // レシートの store_brand を正式名に揃える（表記ゆれ・別表記を統合）。書き換えた件数を返す
 async function migrateStoreBrandsInRecords(records) {
-  const stores = loadStoreDefFromStorage();
-  if (dedupeStoreDef(stores)) _saveStoreDefData(stores);
+  let stores = loadStoreDefFromStorage();
+  // カテゴリ名などの「店ではない名前」は店カテゴリから外す
+  const before = stores.length;
+  stores = stores.filter(s => !isNonStoreName(s.name));
+  const deduped = dedupeStoreDef(stores);
+  if (deduped || stores.length !== before) _saveStoreDefData(stores);
   records = records || await dbGetAll('receipts');
-  let n = 0;
+  const changedRecs = [];
   for (const r of records) {
     const b = (r.store_brand || '').trim();
     if (!b) continue;
@@ -3528,18 +3567,38 @@ async function migrateStoreBrandsInRecords(records) {
     if (isNonStoreName(b)) {
       r.store_brand = null;
       r.store_brand_id = null;
-      await dbPut('receipts', r);
-      n++;
+      changedRecs.push(r);
       continue;
     }
-    const e = findStoreEntry(b, stores);
+    let e = findStoreEntry(b, stores);
+    if (!e) {
+      // 未登録でも組み込み辞書で正式名が分かるもの（例：売却・フリマ → メルカリ）は正式名で登録して寄せる
+      const canon = resolveStoreBrandName(b);
+      if (canon && canon !== b) {
+        e = findStoreEntry(canon, stores);
+        if (!e) { e = { id: _genStoreId(), name: canon, aliases: [b] }; stores.push(e); _saveStoreDefData(stores); }
+      }
+    }
     if (e && (e.name !== r.store_brand || e.id !== r.store_brand_id)) {
       r.store_brand = e.name;
       r.store_brand_id = e.id;
-      await dbPut('receipts', r);
-      n++;
+      changedRecs.push(r);
     }
   }
+  // 1件ずつ書くと件数が多いとき遅いので、1つのトランザクションでまとめて保存する
+  if (changedRecs.length > 0) {
+    const d = await ensureDB();
+    _receiptsDirty = true;
+    await new Promise((resolve, reject) => {
+      const tx = d.transaction('receipts', 'readwrite');
+      const os = tx.objectStore('receipts');
+      changedRecs.forEach(r => os.put(r));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+  const n = changedRecs.length;
   return n;
 }
 
@@ -5141,7 +5200,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 16:37';
+const APP_BUILD = '2026-10-09 17:00';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6588,6 +6647,8 @@ async function loadCalendar() {
   try {
     _calRecords = await dbGetAll('receipts');
   } catch(e) { _calRecords = []; }
+  // 店名の表記ゆれ統合（リスト表示の loadHistory と同じ処理をカレンダー表示でも行う）
+  try { await migrateStoreBrandsInRecords(_calRecords); } catch (e) { console.warn('店名統合に失敗', e); }
 
   // 履歴（カレンダー）を開いたときは常に今日の月を表示する
   // ※ 月の前後移動（calChangeMonth）は renderCalendar だけを呼ぶのでここを通らず、閲覧中の月は保たれる
@@ -10225,6 +10286,10 @@ async function initApp(isResume) {
         if (attempt < 3) await new Promise(r => setTimeout(r, 600));
       }
     }
+    // 起動時に店名の表記ゆれ・重複登録を整理する（どのタブから開いても反映されるように）
+    if (!isResume) {
+      try { await migrateStoreBrandsInRecords(); updateStoreDefStatus(); } catch (e) { console.warn('店名統合に失敗', e); }
+    }
     // 復帰時は表示中のタブを再描画して真っ暗を防ぐ
     if (isResume) {
       loadHistory();
@@ -11814,6 +11879,7 @@ async function saveManualReceipt() {
   if (!date)  { showManualStatus('error', '日付を入力してください'); return; }
 
   try {
+    if (store) store = sanitizeStoreName(store) || null;
     const storeBrand = store ? cleanStoreBrand(store) : null;
     const storeBrandId = storeBrand ? autoRegisterStoreBrand(storeBrand) : null;
     // 収入の場合は price を負値にして保存（集計で区別）
