@@ -4908,7 +4908,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 16:09';
+const APP_BUILD = '2026-10-09 16:14';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -10227,7 +10227,10 @@ const RECAT_MAX_CONCURRENT = 5;
 let recatActiveCount = 0;
 const recatDoneIds = new Set(); // 再カテゴライズ完了済みID（ページリロードまで保持）
 
-async function recategorizeReceipt(id, btn) {
+// opts.onlyIndices: 指定 index の商品だけを分類・更新する（手入力の自動カテゴライズ用）
+// opts.largeHint:   大カテゴリ名。指定時はその配下の中カテゴリを優先させる
+// opts.skipStoreBrand: true なら store_brand を更新しない
+async function recategorizeReceipt(id, btn, opts = {}) {
   // エラー状態のタップ → エラー内容をクリップボードにコピー
   if (btn.classList.contains('error')) {
     const errText = btn.dataset.errorMsg || btn.title || '（エラー内容なし）';
@@ -10311,8 +10314,24 @@ async function recategorizeReceipt(id, btn) {
     // 有効な中カテゴリ名の配列（Geminiへの明示的な制約）
     const validMidList = categoryDef.map(m => `"${m.middle}"`).join(', ');
 
-    const itemLines = record.items.map((item, i) => `${i}: ${item.name}`).join('\n');
+    const targetIdx = Array.isArray(opts.onlyIndices)
+      ? opts.onlyIndices.filter(i => record.items[i])
+      : record.items.map((_, i) => i);
+    if (targetIdx.length === 0) { btn.classList.remove('spinning'); recatActiveCount--; return; }
+    const itemLines = targetIdx.map(i => `${i}: ${record.items[i].name || '（名称なし）'}`).join('\n');
     const store = record.store || '';
+
+    // 大カテゴリのヒント（手入力で大カテゴリだけ選ばれていた場合）
+    let largeHintText = '';
+    if (opts.largeHint && largeDef && largeDef.length > 0) {
+      const ld = largeDef.find(l => l.large === opts.largeHint);
+      const idToMid = new Map(categoryDef.map(m => [m.id, m]));
+      const mids = (ld?.middles || []).map(e => idToMid.get(e) || categoryDef.find(m => m.middle === e)).filter(Boolean).map(m => m.middle);
+      if (mids.length > 0) {
+        largeHintText = `【大カテゴリの指定】
+- ユーザーは大カテゴリ「${opts.largeHint}」を選んでいる。可能な限り次の中カテゴリから選ぶこと：${mids.map(c => `「${c}」`).join('、')}`;
+      }
+    }
 
     // 店舗タイプ系カテゴリ（コンビニ・外食等）を抽出して店名判定ルールを組み立てる
     const storeTypeMids = categoryDef
@@ -10339,6 +10358,8 @@ ${itemLines}
 ${catLines}
 
 ${storeTypeRuleText}
+
+${largeHintText}
 
 【厳守ルール】
 - middle_category は【使用可能な中カテゴリ名一覧】の文字列を一字一句そのまま使うこと（変更・追加・削除禁止）
@@ -10406,14 +10427,16 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
     const newStoreBrand = Array.isArray(parsed) ? null : (parsed.store_brand || null);
 
     // store_brand を更新（値があり、かつ空文字でなければ）
-    if (newStoreBrand && newStoreBrand.trim()) {
+    if (!opts.skipStoreBrand && record.store && newStoreBrand && newStoreBrand.trim()) {
       record.store_brand = newStoreBrand.trim();
       record.store_brand_id = autoRegisterStoreBrand(newStoreBrand.trim()) || record.store_brand_id || null;
     }
 
     // カテゴリ検証＆フォールバック付きで更新
-    results.forEach(({ index, middle_category, small_category }) => {
+    results.forEach(({ index: rawIndex, middle_category, small_category }) => {
+      const index = Number(rawIndex);
       if (!record.items[index]) return;
+      if (!targetIdx.includes(index)) return;
 
       let mid = middle_category;
       let sm = small_category;
@@ -11461,13 +11484,18 @@ function addManualItem() {
     middleId = entry ? entry.id : null;
   }
 
+  // 支出で中カテゴリ未選択の商品は、保存後に自動カテゴライズする対象として印を付ける
+  let autoCat = false;
+  try { autoCat = !selVal && _manualEntryType === 'expense'; } catch (_) {}
+
   manualItems.push({
     name,
     middle_category: middle,
     middle_category_id: middleId || midNameToId(middle) || null,
     small_category: _manualSmall || '',
     price,
-    quantity
+    quantity,
+    ...(autoCat ? { _autoCat: true } : {})
   });
   nameEl.value = '';
   priceEl.value = '';
@@ -11522,27 +11550,30 @@ async function saveManualReceipt() {
     const catLabel = document.getElementById('manual-cat-label');
     store = (catLabel && catLabel.textContent.trim()) ? catLabel.textContent.trim() : '収入';
   } else if (!store || store === '手入力' || store === '店舗を選択') {
-    const midSel = document.getElementById('manual-item-middle');
-    const midVal = midSel ? midSel.value : '';
-    if (midVal) {
-      store = midVal;
-    } else {
-      const def = (largeDef && largeDef.length > 0) ? largeDef : DEFAULT_LARGE_DEF;
-      store = def[_manualLargeIdx]?.large || '手入力';
-    }
+    // 店舗未選択ならカテゴリ名などで埋めず null のままにする
+    store = null;
   }
+  // 自動カテゴライズ時のヒントにする大カテゴリ名（保存後にフォームが変わる前に控える）
+  const _defForHint = (largeDef && largeDef.length > 0) ? largeDef : DEFAULT_LARGE_DEF;
+  const largeHint = _manualEntryType === 'expense' ? (_defForHint[_manualLargeIdx]?.large || '') : '';
   const date = document.getElementById('manual-date').value;
   const time = document.getElementById('manual-time').value || null;
 
   if (!date)  { showManualStatus('error', '日付を入力してください'); return; }
 
   try {
-    const storeBrandId = autoRegisterStoreBrand(store);
+    const storeBrandId = store ? autoRegisterStoreBrand(store) : null;
     // 収入の場合は price を負値にして保存（集計で区別）
   const sign = _manualEntryType === 'income' ? -1 : 1;
-  const signedItems = manualItems.map(it => ({ ...it, price: (it.price || 0) * sign, entry_type: _manualEntryType }));
+  // 自動カテゴライズ対象の商品 index を控え、保存データからは印を外す
+  const autoCatIdx = [];
+  const signedItems = manualItems.map((it, i) => {
+    const { _autoCat, ...rest } = it;
+    if (_autoCat) autoCatIdx.push(i);
+    return { ...rest, price: (rest.price || 0) * sign, entry_type: _manualEntryType };
+  });
   const total = signedItems.reduce((s, i) => s + (i.price || 0), 0);
-    await dbAdd('receipts', {
+    const newId = await dbAdd('receipts', {
       store,
       store_brand: store,
       store_brand_id: storeBrandId || null,
@@ -11558,10 +11589,32 @@ async function saveManualReceipt() {
     // 連続入力しやすいよう、日付・支出/収入・カテゴリ（大・中・小）は直前の内容を引き継ぐ
     // （設定「手入力で保存毎にカテゴリを初期化」がONならカテゴリは初期化）
     clearManualEntry({ keepPrevious: true });
-    showManualStatus('success', '保存しました！');
+    if (autoCatIdx.length > 0 && localStorage.getItem('gemini_api_key')) {
+      showManualStatus('success', '保存しました！（カテゴリを自動判定中…）');
+      autoCategorizeManualItems(newId, autoCatIdx, largeHint);
+    } else {
+      showManualStatus('success', '保存しました！');
+    }
   } catch(err) {
     showManualStatus('error', `保存エラー: ${err.message}`);
   }
+}
+
+// 手入力で中カテゴリ未選択だった商品を、保存後に裏で自動カテゴライズする
+async function autoCategorizeManualItems(id, indices, largeHint) {
+  const dummyBtn = document.createElement('button');
+  // 同時実行上限に当たったら少し待って再試行する
+  for (let i = 0; i < 10 && recatActiveCount >= RECAT_MAX_CONCURRENT; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  await recategorizeReceipt(id, dummyBtn, { onlyIndices: indices, largeHint, skipStoreBrand: true });
+  if (dummyBtn.classList.contains('error')) {
+    showManualStatus('error', `自動カテゴライズに失敗しました（履歴の🔄で再試行できます）`);
+    console.warn(dummyBtn.dataset.errorMsg);
+    return;
+  }
+  showManualStatus('success', 'カテゴリを自動判定しました');
+  try { if (typeof _refreshHistoryAfterEdit === 'function') await _refreshHistoryAfterEdit(); } catch (_) {}
 }
 
 // ===== 手入力：支出 / 収入 切り替え =====
