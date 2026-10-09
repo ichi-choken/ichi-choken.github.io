@@ -4810,7 +4810,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 15:46';
+const APP_BUILD = '2026-10-09 15:59';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -11452,7 +11452,8 @@ async function saveManualReceipt() {
       saved_at: new Date().toISOString()
     });
     playSaveChime();
-    clearManualEntry();
+    // 連続入力しやすいよう、日付・支出/収入・カテゴリ（大・中・小）は直前の内容を引き継ぐ
+    clearManualEntry({ keepPrevious: true });
     showManualStatus('success', '保存しました！');
   } catch(err) {
     showManualStatus('error', `保存エラー: ${err.message}`);
@@ -11524,7 +11525,21 @@ function setManualEntryType(type) {
   }
 }
 
-function clearManualEntry() {
+function clearManualEntry(opts = {}) {
+  // 保存直後は日付・種別・カテゴリを引き継ぐ（商品名・金額・店舗はリセット）
+  let keep = null;
+  if (opts.keepPrevious) {
+    const midSel = document.getElementById('manual-item-middle');
+    const catLabel = document.getElementById('manual-cat-label');
+    keep = {
+      date: document.getElementById('manual-date').value,
+      type: _manualEntryType,
+      largeIdx: _manualLargeIdx,
+      mid: midSel ? midSel.value : '',
+      small: _manualSmall,
+      incomeName: catLabel ? catLabel.textContent.trim() : ''
+    };
+  }
   manualItems = [];
   document.getElementById('manual-store').value = '手入力';
   // 店舗選択UIをリセット
@@ -11541,8 +11556,24 @@ function clearManualEntry() {
   document.getElementById('manual-item-price').value = '';
   document.getElementById('manual-item-qty').value = 1;
   renderManualItems();
-  // 支出/収入トグルをリセット
-  setManualEntryType('expense');
+  if (!keep) {
+    // 支出/収入トグルをリセット
+    setManualEntryType('expense');
+    return;
+  }
+  // ── 直前の内容を復元 ──
+  if (keep.date) document.getElementById('manual-date').value = keep.date;
+  setManualEntryType(keep.type);
+  if (keep.type === 'income') {
+    const opt = [...document.querySelectorAll('#manual-cat-list .manual-cat-opt')]
+      .find(el => el.textContent === keep.incomeName);
+    if (opt && opt.onclick) opt.onclick();
+  } else {
+    const def = (largeDef && largeDef.length > 0) ? largeDef : DEFAULT_LARGE_DEF;
+    if (def[keep.largeIdx]) chooseManualCat(keep.largeIdx, def[keep.largeIdx].large);
+    if (keep.mid) chooseMidCat(keep.mid);
+    if (keep.mid && keep.small) chooseSmallCat(keep.small);
+  }
 }
 
 // ===== カレンダーから指定日付で手入力を開く =====
