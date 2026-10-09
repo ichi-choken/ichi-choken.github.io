@@ -3337,7 +3337,18 @@ function updateStoreDefStatus() {
 // 各店エントリは {id, name, aliases?:[別表記...]} 。
 // 「Welcia / welcia / ウエルシア」のような別表記は aliases に持たせ、保存時に name へ揃える。
 // 大小文字・全角半角・ひらがな/カタカナ・空白や記号の違いは _normStoreText で自動的に同一視する。
-function _storeKey(name) { return _normStoreText(name); }
+// 正規化結果はキャッシュして使い回す（重複チェックで大量に呼ばれるため）
+const _storeKeyCache = new Map();
+function _storeKey(name) {
+  const s = String(name || '');
+  let k = _storeKeyCache.get(s);
+  if (k === undefined) {
+    k = _normStoreText(s);
+    if (_storeKeyCache.size > 5000) _storeKeyCache.clear();
+    _storeKeyCache.set(s, k);
+  }
+  return k;
+}
 
 // 英字/カタカナなど、正規化だけでは同一視できない代表的な別表記（先頭が正式名）
 const BUILTIN_STORE_GROUPS = [
@@ -3382,10 +3393,19 @@ const BUILTIN_STORE_GROUPS = [
   ['メルカリ', 'mercari', 'Mercari', '売却・フリマ'],
 ];
 // 名前が属する組み込みグループの index（なければ -1）
+let _builtinKeyToGroup = null; // 正規化キー → グループ index
 function _builtinStoreGroupOf(name) {
   const k = _storeKey(name);
   if (!k) return -1;
-  return BUILTIN_STORE_GROUPS.findIndex(g => g.some(v => _storeKey(v) === k));
+  if (!_builtinKeyToGroup) {
+    _builtinKeyToGroup = new Map();
+    BUILTIN_STORE_GROUPS.forEach((g, i) => g.forEach(v => {
+      const vk = _storeKey(v);
+      if (vk && !_builtinKeyToGroup.has(vk)) _builtinKeyToGroup.set(vk, i);
+    }));
+  }
+  const g = _builtinKeyToGroup.get(k);
+  return g === undefined ? -1 : g;
 }
 // 「アピタ　大智リュック」のように「店名＋全角スペース/読点/連続空白＋メモ」になっている名前なら、
 // 先頭の店名部分が base と一致するか（半角スペース1つの「ナフコ 不二屋」等は正式名なので対象外）
@@ -3741,13 +3761,23 @@ function saveStoreDef() {
     aliases = [...new Set(aliases)].filter(a => a !== name);
     stores[storeEditIndex] = { id: old.id, name, ...(aliases.length ? { aliases } : {}) }; // idを保持
   }
-  // 別表記に挙げた店が別エントリとして登録済みなら1つにまとめる
-  dedupeStoreDef(stores);
+  stores.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   localStorage.setItem(STORE_DEF_KEY, JSON.stringify(stores));
-  updateStoreDefStatus();
-  renderStoreEditorList();
+  // ① まずモーダルを閉じ、② 店一覧（店名・別表記）を即座に描き直す
   closeModal('add-store-modal');
-  migrateStoreBrandsInRecords().catch(e => console.warn(e));
+  renderStoreEditorList();
+  // ③ 重い処理（重複エントリの統合・レシートの店名書き換え）は、閉じる描画が終わってから行う
+  setTimeout(async () => {
+    try {
+      const latest = loadStoreDefFromStorage();
+      if (dedupeStoreDef(latest)) {
+        localStorage.setItem(STORE_DEF_KEY, JSON.stringify(latest));
+        renderStoreEditorList();
+      }
+      updateStoreDefStatus();
+      await migrateStoreBrandsInRecords();
+    } catch (e) { console.warn('店名の統合に失敗', e); }
+  }, 80);
 }
 
 function deleteStoreDef(idx) {
@@ -5200,7 +5230,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 17:00';
+const APP_BUILD = '2026-10-09 17:05';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
