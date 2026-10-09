@@ -1641,6 +1641,7 @@
       <input type="file" accept=".json" id="import-file-input" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;">
       <div class="btn btn-secondary" style="margin-top:0; text-align:center; pointer-events:none;">📥 インポート（JSONから復元）</div>
     </label>
+    <button type="button" id="wipe-data-btn" class="btn btn-secondary" style="margin-top:12px; border-color:var(--danger); color:var(--danger);" onclick="wipeCurrentUserData()">🗑 データ全消去</button>
     <button class="btn btn-secondary" style="margin-top:12px;" onclick="closeModal('user-modal')">閉じる</button>
   </div>
 </div>
@@ -1670,6 +1671,21 @@
 
     <div id="delete-auth-msg" style="font-size:12px;min-height:16px;margin-top:8px;"></div>
     <button class="btn btn-secondary" onclick="cancelDeleteAuth()">キャンセル</button>
+  </div>
+</div>
+
+<!-- データ全消去：確認モーダル -->
+<div class="modal-overlay" id="wipe-confirm-modal">
+  <div class="modal">
+    <button type="button" class="modal-close" onclick="_finishWipeConfirm(false)" aria-label="閉じる">✕</button>
+    <div class="modal-title" style="color:var(--danger);">⚠ データ全消去</div>
+    <p id="wipe-confirm-text" style="font-size:15px;font-weight:700;margin-bottom:8px;"></p>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;">
+      このユーザーのレシート・収入の記録がすべて消え、元に戻せません。必要なら先にエクスポートしてください。<br>
+      （ユーザー自体と、カテゴリ・店の定義は残ります）
+    </p>
+    <button type="button" class="btn btn-primary" style="background:var(--danger);border-color:var(--danger);color:#fff;" onclick="_finishWipeConfirm(true)">消去する</button>
+    <button type="button" class="btn btn-secondary" onclick="_finishWipeConfirm(false)">キャンセル</button>
   </div>
 </div>
 
@@ -2868,13 +2884,13 @@ function _newSalt() {
 // ── 認証ゲート本体：成功で true を resolve ──
 let _deleteAuthResolve = null;
 
-function requireDeleteAuth(targetLabel) {
+function requireDeleteAuth(targetLabel, message) {
   const mode = getDeleteLockMode();
   if (mode === 'none') return Promise.resolve(true); // 未設定なら従来通り confirm のみ
 
   return new Promise(resolve => {
     _deleteAuthResolve = resolve;
-    document.getElementById('delete-auth-target').textContent = `「${targetLabel}」を削除するには本人確認が必要です。`;
+    document.getElementById('delete-auth-target').textContent = message || `「${targetLabel}」を削除するには本人確認が必要です。`;
     document.getElementById('delete-auth-msg').textContent = '';
     const bio = document.getElementById('delete-auth-bio');
     const form = document.getElementById('delete-auth-form');
@@ -3094,6 +3110,63 @@ async function deleteUser(name, e) {
     showStatus('success', `「${name}」を削除しました${suffix}`);
   } else {
     showStatus('error', `「${name}」を一覧から削除しました。ただしデータ本体の削除が完了していない可能性があります（${delResult}）。他のタブでこのアプリを開いていないか確認してください。`);
+  }
+}
+
+// ===== データ全消去（現在ユーザーのレシートを全削除。ユーザー自体は残す） =====
+let _wipeConfirmResolve = null;
+
+function _askWipeConfirm(name) {
+  return new Promise(resolve => {
+    _wipeConfirmResolve = resolve;
+    document.getElementById('wipe-confirm-text').textContent = `${name}さんのデータを全て消去しますか？`;
+    openModal('wipe-confirm-modal');
+  });
+}
+
+function _finishWipeConfirm(ok) {
+  const r = _wipeConfirmResolve;
+  _wipeConfirmResolve = null;
+  closeModal('wipe-confirm-modal');
+  if (r) r(ok);
+}
+
+async function wipeCurrentUserData() {
+  const name = getCurrentUser();
+  if (!name) { alert('ユーザーが選択されていません'); return; }
+
+  // 認証設定済みなら先に本人確認（未設定なら素通り）
+  if (getDeleteLockMode() !== 'none') {
+    const authed = await requireDeleteAuth(name, `${name}さんのデータを全て消去するには本人確認が必要です。`);
+    if (!authed) return;
+  }
+  // 認証モーダルの閉じ処理（history.back）が終わってから確認モーダルを開く
+  await new Promise(r => setTimeout(r, 300));
+  const ok = await _askWipeConfirm(name);
+  if (!ok) return;
+
+  try {
+    const d = await ensureDB();
+    await new Promise((resolve, reject) => {
+      const tx = d.transaction('receipts', 'readwrite');
+      tx.objectStore('receipts').clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+    _receiptsDirty = true;
+    try { _calRecords = []; } catch (_) {}
+    try { updateExportStatus(); } catch (_) {}
+    try { _shareFileCache = null; prepareShareFile(); } catch (_) {}
+    try {
+      if (typeof _historyView !== 'undefined' && _historyView === 'cal') await loadCalendar();
+      else await loadHistory();
+    } catch (_) {}
+    try { if (document.getElementById('tab-stats').classList.contains('active')) loadStats(); } catch (_) {}
+    showStatus('success', `${name}さんのデータを全て消去しました`);
+  } catch (err) {
+    console.error('データ全消去に失敗', err);
+    showStatus('error', `消去に失敗しました：${err.message || err}`);
   }
 }
 
@@ -4810,7 +4883,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 15:59';
+const APP_BUILD = '2026-10-09 16:06';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -9251,6 +9324,11 @@ async function _drillUpInner() {
 
 // 優先度順に「今開いている最前面のUI」を閉じる共通ロジック
 async function _closeTopLayer() {
+  if (document.getElementById('wipe-confirm-modal').classList.contains('open')) {
+    _closeModalInner('wipe-confirm-modal');
+    if (_wipeConfirmResolve) { const r = _wipeConfirmResolve; _wipeConfirmResolve = null; r(false); }
+    return;
+  }
   if (document.getElementById('delete-auth-modal').classList.contains('open')) {
     _closeModalInner('delete-auth-modal');
     document.getElementById('delete-auth-password').value = '';
