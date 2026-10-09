@@ -1155,6 +1155,18 @@
     font-weight: 700;
   }
 
+  /* 設定のON/OFFスイッチ */
+  .pref-switch-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; cursor:pointer; }
+  .pref-switch-row .pref-switch-text { font-size:13px; color:var(--text); }
+  .pref-switch-row .pref-switch-sub { display:block; font-size:11px; color:var(--text-dim); margin-top:2px; }
+  .pref-switch { position:relative; flex-shrink:0; width:44px; height:24px; }
+  .pref-switch input { opacity:0; width:0; height:0; position:absolute; }
+  .pref-switch .slider { position:absolute; inset:0; background:var(--surface2); border:1px solid var(--border); border-radius:999px; transition:background .2s, border-color .2s; }
+  .pref-switch .slider::before { content:''; position:absolute; left:2px; top:2px; width:18px; height:18px; border-radius:50%; background:var(--text-dim); transition:transform .2s, background .2s; }
+  .pref-switch input:checked + .slider { background:var(--accent); border-color:var(--accent); }
+  .pref-switch input:checked + .slider::before { transform:translateX(20px); background:#111; }
+  body.theme-light .pref-switch input:checked + .slider::before { background:#fff; }
+
   /* グラフ切り替えトグル */
   .chart-type-toggle {
     display: flex;
@@ -2422,6 +2434,16 @@
       <option value="30">30日以上未実施で警告</option>
       <option value="0">催促しない</option>
     </select>
+
+    <label class="pref-switch-row" for="pref-manual-reset-cat">
+      <span class="pref-switch-text">手入力で保存毎にカテゴリを初期化
+        <span class="pref-switch-sub">OFF：直前のカテゴリを引き継ぐ（日付はどちらでも引き継ぎ）</span>
+      </span>
+      <span class="pref-switch">
+        <input type="checkbox" id="pref-manual-reset-cat" onchange="onPrefChange('manualResetCat', this.checked)">
+        <span class="slider"></span>
+      </span>
+    </label>
 
     <button class="btn btn-secondary" onclick="resetPrefs()">動作設定を初期値に戻す</button>
 
@@ -4795,6 +4817,7 @@ const PREF_DEFAULTS = {
   historyView: 'cal',   // 'cal' | 'list'
   cameraMode: 'camera', // 'camera' | 'gallery'
   backupDays: 14,       // 0 = 催促しない
+  manualResetCat: false, // true = 手入力保存毎にカテゴリを初期化
 };
 let _prefs = null;
 
@@ -4860,6 +4883,8 @@ function renderPrefsUI() {
     const el = document.getElementById(id);
     if (el) el.value = String(getPref(map[id]));
   });
+  const resetCat = document.getElementById('pref-manual-reset-cat');
+  if (resetCat) resetCat.checked = !!getPref('manualResetCat');
 }
 
 // 値を変えた瞬間に反映できるものを適用する
@@ -4883,7 +4908,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 16:06';
+const APP_BUILD = '2026-10-09 16:09';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -11531,6 +11556,7 @@ async function saveManualReceipt() {
     });
     playSaveChime();
     // 連続入力しやすいよう、日付・支出/収入・カテゴリ（大・中・小）は直前の内容を引き継ぐ
+    // （設定「手入力で保存毎にカテゴリを初期化」がONならカテゴリは初期化）
     clearManualEntry({ keepPrevious: true });
     showManualStatus('success', '保存しました！');
   } catch(err) {
@@ -11641,6 +11667,11 @@ function clearManualEntry(opts = {}) {
   }
   // ── 直前の内容を復元 ──
   if (keep.date) document.getElementById('manual-date').value = keep.date;
+  if (getPref('manualResetCat')) {
+    // 設定で「保存毎にカテゴリを初期化」がONなら、日付だけ引き継いでカテゴリは初期状態へ
+    setManualEntryType('expense');
+    return;
+  }
   setManualEntryType(keep.type);
   if (keep.type === 'income') {
     const opt = [...document.querySelectorAll('#manual-cat-list .manual-cat-opt')]
