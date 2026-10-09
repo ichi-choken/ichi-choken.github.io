@@ -3339,7 +3339,65 @@ function updateStoreDefStatus() {
 // 大小文字・全角半角・ひらがな/カタカナ・空白や記号の違いは _normStoreText で自動的に同一視する。
 function _storeKey(name) { return _normStoreText(name); }
 
-// name に該当する店エントリを返す（完全一致 → 別表記一致 → 正規化キー一致の順）
+// 英字/カタカナなど、正規化だけでは同一視できない代表的な別表記（先頭が正式名）
+const BUILTIN_STORE_GROUPS = [
+  ['ローソン', 'LAWSON'],
+  ['ファミリーマート', 'FamilyMart', 'Family Mart', 'ファミマ'],
+  ['セブン-イレブン', '7-Eleven', 'SEVEN-ELEVEN', 'セブンイレブン'],
+  ['ミニストップ', 'MINISTOP'],
+  ['Daily YAMAZAKI', 'デイリーヤマザキ'],
+  ['ウエルシア', 'Welcia', 'ウェルシア'],
+  ['アピタ', 'APITA', 'APITA POWER', 'アピタパワー'],
+  ['ピアゴ', 'PIAGO'],
+  ['イオン', 'AEON'],
+  ['ダイソー', 'DAISO'],
+  ['DAISO THREEPPY', 'THREEPPY', 'DAISO THREEEPPY', 'スリーピー'],
+  ['セリア', 'Seria'],
+  ['ハンズ', 'HANDS', '東急ハンズ'],
+  ['ロフト', 'Loft'],
+  ['無印良品', 'MUJI'],
+  ['ユニクロ', 'UNIQLO'],
+  ['ジーユー', 'GU'],
+  ['グローバルワーク', 'GLOBAL WORK'],
+  ['スガキヤ', 'Sugakiya', 'Sugakiya スガキヤ'],
+  ['TOHOシネマズ', 'TOHO CINEMAS'],
+  ['モスバーガー', 'MOS BURGER', 'MOS'],
+  ['マクドナルド', "McDonald's", 'McDonalds', 'マック'],
+  ['ケンタッキーフライドチキン', 'KFC', 'Kentucky Fried Chicken', 'ケンタッキー'],
+  ['ミスタードーナツ', 'Mister Donut', 'ミスド'],
+  ['スターバックス', 'STARBUCKS', 'スターバックスコーヒー', 'スタバ'],
+  ['サブウェイ', 'SUBWAY'],
+  ['ドン・キホーテ', 'DON QUIJOTE', 'ドンキ'],
+  ['ベルマート', 'Bellmart'],
+  ['プラスタギフト', 'PLUSTA Gift'],
+  ['ジェイアール名古屋タカシマヤ', 'JR Takashimaya', 'JRタカシマヤ'],
+  ['丸善', 'MARUZEN', 'MARUZEN-YUSHODO'],
+  ['ビックカメラ', 'BIC CAMERA'],
+  ['ABC-MART', 'ABCマート'],
+  ['ワークマン', 'WORKMAN'],
+  ['マックスバリュ', 'MaxValu', 'マックスバリュー'],
+  ['ココカラファイン', 'cocokara fine'],
+  ['DCM', 'dcm', 'ディーシーエム'],
+];
+// 名前が属する組み込みグループの index（なければ -1）
+function _builtinStoreGroupOf(name) {
+  const k = _storeKey(name);
+  if (!k) return -1;
+  return BUILTIN_STORE_GROUPS.findIndex(g => g.some(v => _storeKey(v) === k));
+}
+// 「アピタ　大智リュック」のように「店名＋全角スペース/読点/連続空白＋メモ」になっている名前なら、
+// 先頭の店名部分が base と一致するか（半角スペース1つの「ナフコ 不二屋」等は正式名なので対象外）
+function _isMemoVariantOf(name, base) {
+  const n = String(name || ''), b = String(base || '');
+  if (b.length < 2 || n.length <= b.length || !n.startsWith(b)) return false;
+  return /^(　|、|,|\s{2,})/.test(n.slice(b.length));
+}
+function _sameBuiltinGroup(a, b) {
+  const ga = _builtinStoreGroupOf(a);
+  return ga >= 0 && ga === _builtinStoreGroupOf(b);
+}
+
+// name に該当する店エントリを返す（完全一致 → 別表記一致 → 正規化キー一致 → 組み込み別表記の順）
 function findStoreEntry(name, stores) {
   const n = String(name || '').trim();
   if (!n) return null;
@@ -3350,7 +3408,12 @@ function findStoreEntry(name, stores) {
   if (e) return e;
   const k = _storeKey(n);
   if (!k) return null;
-  return stores.find(s => _storeKey(s.name) === k || (s.aliases || []).some(a => _storeKey(a) === k)) || null;
+  e = stores.find(s => _storeKey(s.name) === k || (s.aliases || []).some(a => _storeKey(a) === k));
+  if (e) return e;
+  e = stores.find(s => _isMemoVariantOf(n, s.name));
+  if (e) return e;
+  if (_builtinStoreGroupOf(n) < 0) return null;
+  return stores.find(s => _sameBuiltinGroup(n, s.name) || (s.aliases || []).some(a => _sameBuiltinGroup(n, a))) || null;
 }
 
 // 一覧などに出す店名。店名が null の収入はカテゴリ名、それ以外は「不明」
@@ -3391,7 +3454,9 @@ function resolveStoreBrandName(name) {
   const n = String(name || '').trim();
   if (!n) return n;
   const e = findStoreEntry(n);
-  return e ? e.name : n;
+  if (e) return e.name;
+  const g = _builtinStoreGroupOf(n);
+  return g >= 0 ? BUILTIN_STORE_GROUPS[g][0] : n;
 }
 
 // 重複エントリ（別表記・正規化キーが同じもの）を1つにまとめる。変更があれば true
@@ -3399,17 +3464,26 @@ function dedupeStoreDef(stores) {
   const out = [];
   let changed = false;
   // 別表記を持つエントリを先に処理して、そちらを正とする
-  const ordered = stores.slice().sort((a, b) => ((b.aliases || []).length > 0) - ((a.aliases || []).length > 0));
+  const ordered = stores.slice().sort((a, b) =>
+    (((b.aliases || []).length > 0) - ((a.aliases || []).length > 0)) || (a.name.length - b.name.length));
   ordered.forEach(e => {
     const target = out.find(o =>
       o.name === e.name ||
       (o.aliases || []).includes(e.name) ||
       _storeKey(o.name) === _storeKey(e.name) ||
-      (o.aliases || []).some(a => _storeKey(a) === _storeKey(e.name)));
+      (o.aliases || []).some(a => _storeKey(a) === _storeKey(e.name)) ||
+      _sameBuiltinGroup(o.name, e.name) ||
+      _isMemoVariantOf(e.name, o.name));
     if (!target) { out.push({ ...e, aliases: (e.aliases || []).slice() }); return; }
     changed = true;
+    // 組み込みの正式名を優先して名前に採用する（例：MOS BURGER と モスバーガー → モスバーガー）
+    const g = _builtinStoreGroupOf(e.name);
+    if (g >= 0 && BUILTIN_STORE_GROUPS[g][0] === e.name && target.name !== e.name) {
+      target.aliases = [...(target.aliases || []), target.name];
+      target.name = e.name;
+    }
     const add = [e.name, ...(e.aliases || [])].filter(a => a && a !== target.name);
-    target.aliases = [...new Set([...(target.aliases || []), ...add])];
+    target.aliases = [...new Set([...(target.aliases || []), ...add])].filter(a => a !== target.name);
   });
   out.forEach(o => { if (!o.aliases || o.aliases.length === 0) delete o.aliases; });
   out.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -5067,7 +5141,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 16:35';
+const APP_BUILD = '2026-10-09 16:37';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
