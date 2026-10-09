@@ -1513,6 +1513,17 @@
   .cal-cell.has-data { cursor: pointer; border-color: #444; }
   .cal-cell.has-data:active { background: var(--surface2); }
   .cal-cell.today { border-color: var(--accent); }
+  /* 選択中の日付（今日の枠色とは別色で目立たせる） */
+  .cal-cell.selected {
+    border-color: #4fc3f7;
+    box-shadow: inset 0 0 0 1px #4fc3f7;
+    background: rgba(79,195,247,0.12);
+  }
+  body.theme-light .cal-cell.selected {
+    border-color: #0288d1;
+    box-shadow: inset 0 0 0 1px #0288d1;
+    background: rgba(2,136,209,0.10);
+  }
   .cal-cell.empty { background: transparent; border-color: transparent; }
   .cal-day-num {
     font-size: 11px;
@@ -4799,7 +4810,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 15:43';
+const APP_BUILD = '2026-10-09 15:46';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6217,6 +6228,7 @@ async function loadHistory() {
 let _calYear = 0;
 let _calMonth = 0; // 0-indexed
 let _calRecords = [];
+let _calSelectedDate = null; // カレンダーで選択中の日付（YYYY-MM-DD）
 let _historyView = 'cal'; // 'list' | 'cal'（起動時に設定で上書き）
 
 function switchHistoryView(mode) {
@@ -6248,12 +6260,8 @@ async function loadCalendar() {
   const pad2 = n => String(n).padStart(2, '0');
   const todayStr = `${_calYear}-${pad2(_calMonth + 1)}-${pad2(now.getDate())}`;
   const todayRecords = _calRecords.filter(r => r.date === todayStr);
-  if (todayRecords.length > 0) {
-    showCalDayPanel(todayStr, todayRecords);
-  } else {
-    const panel = document.getElementById('cal-day-panel');
-    if (panel) panel.style.display = 'none';
-  }
+  // レシートが0件でも開いておき、そこから「＋ 追加」できるようにする
+  showCalDayPanel(todayStr, todayRecords, { noScroll: true });
 }
 
 function calChangeMonth(delta) {
@@ -6261,6 +6269,7 @@ function calChangeMonth(delta) {
   if (_calMonth > 11) { _calMonth = 0; _calYear++; }
   if (_calMonth < 0)  { _calMonth = 11; _calYear--; }
   document.getElementById('cal-day-panel').style.display = 'none';
+  _calSelectedDate = null;
   renderCalendar();
 }
 
@@ -6315,7 +6324,9 @@ function renderCalendar() {
     const cell = document.createElement('div');
     cell.className = 'cal-cell' +
       (records.length > 0 ? ' has-data' : '') +
-      (dateStr === todayStr ? ' today' : '');
+      (dateStr === todayStr ? ' today' : '') +
+      (dateStr === _calSelectedDate ? ' selected' : '');
+    cell.dataset.date = dateStr;
 
     const numClass = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
     cell.innerHTML = `<span class="cal-day-num${numClass}">${d}</span>`;
@@ -6348,8 +6359,16 @@ function renderCalendar() {
   }
 }
 
-function showCalDayPanel(dateStr, records) {
+function _updateCalSelection() {
+  document.querySelectorAll('.cal-cell[data-date]').forEach(c => {
+    c.classList.toggle('selected', c.dataset.date === _calSelectedDate);
+  });
+}
+
+function showCalDayPanel(dateStr, records, opts = {}) {
   const panel = document.getElementById('cal-day-panel');
+  _calSelectedDate = dateStr;
+  _updateCalSelection();
   panel.dataset.date = dateStr; // 削除・編集後の描き直しで同じ日を開き直すため
   const [y, m, d] = dateStr.split('-').map(Number);
   const label = `${y}年${m}月${d}日`;
@@ -6384,7 +6403,11 @@ function showCalDayPanel(dateStr, records) {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'cal-day-panel-close';
   closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+  closeBtn.addEventListener('click', () => {
+    panel.style.display = 'none';
+    _calSelectedDate = null;
+    _updateCalSelection();
+  });
 
   btnRow.appendChild(addBtn);
   btnRow.appendChild(bulkBtn);
@@ -6451,7 +6474,7 @@ function showCalDayPanel(dateStr, records) {
 
   panel.appendChild(ul);
   panel.style.display = 'block';
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (!opts.noScroll) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function calDayBulkRecat(records, bulkBtn) {
@@ -7014,8 +7037,7 @@ async function _refreshHistoryAfterEdit() {
       const d = panel && panel.dataset.date;
       if (panel && panel.style.display !== 'none' && d) {
         const recs = _calRecords.filter(r => r.date === d);
-        if (recs.length > 0) showCalDayPanel(d, recs);
-        else panel.style.display = 'none';
+        showCalDayPanel(d, recs, { noScroll: true });
       }
     } else {
       await loadHistory();
