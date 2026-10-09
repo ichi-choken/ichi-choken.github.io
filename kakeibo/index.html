@@ -4799,7 +4799,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 15:42';
+const APP_BUILD = '2026-10-09 15:43';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6339,8 +6339,10 @@ function renderCalendar() {
         : `¥${total.toLocaleString()}`;
       cell.appendChild(amt);
 
-      cell.addEventListener('click', () => showCalDayPanel(dateStr, records));
     }
+    // データのない日もタップでパネルを開き、そこから手動追加できるようにする
+    cell.style.cursor = 'pointer';
+    cell.addEventListener('click', () => showCalDayPanel(dateStr, records));
 
     grid.appendChild(cell);
   }
@@ -6370,12 +6372,21 @@ function showCalDayPanel(dateStr, records) {
   bulkBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-dim);font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:inherit;white-space:nowrap;';
   bulkBtn.title = 'この日のレシートを全て再カテゴライズ';
   bulkBtn.addEventListener('click', () => calDayBulkRecat(records, bulkBtn));
+  if (records.length === 0) bulkBtn.style.display = 'none';
+
+  // この日付で手入力追加するボタン
+  const addBtn = document.createElement('button');
+  addBtn.textContent = '＋ 追加';
+  addBtn.style.cssText = 'background:none;border:1px solid var(--accent);color:var(--accent);font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:inherit;white-space:nowrap;';
+  addBtn.title = 'この日付で手入力追加';
+  addBtn.addEventListener('click', () => openManualEntryForDate(dateStr));
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'cal-day-panel-close';
   closeBtn.textContent = '✕';
   closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
 
+  btnRow.appendChild(addBtn);
   btnRow.appendChild(bulkBtn);
   btnRow.appendChild(closeBtn);
   header.appendChild(titleSpan);
@@ -11510,6 +11521,15 @@ function clearManualEntry() {
   renderManualItems();
   // 支出/収入トグルをリセット
   setManualEntryType('expense');
+}
+
+// ===== カレンダーから指定日付で手入力を開く =====
+function openManualEntryForDate(dateStr) {
+  switchTab('upload');
+  const dateEl = document.getElementById('manual-date');
+  if (dateEl) dateEl.value = dateStr;
+  const sec = document.getElementById('manual-entry-section');
+  if (sec) setTimeout(() => sec.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 }
 
 // ===== 手入力：日付前後移動 =====
