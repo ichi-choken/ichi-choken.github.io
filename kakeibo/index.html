@@ -1156,6 +1156,18 @@
     font-weight: 700;
   }
 
+  /* 処理中オーバーレイ（店カテゴリのインポート等） */
+  #busy-overlay { position:fixed; inset:0; z-index:10000; display:none; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.45); }
+  #busy-overlay.show { display:flex; }
+  #busy-overlay .busy-box { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:12px;
+    padding:18px 22px; min-width:220px; max-width:calc(100% - 48px); text-align:center; box-shadow:0 8px 24px rgba(0,0,0,.3); }
+  #busy-overlay .busy-spinner { width:28px; height:28px; margin:0 auto 10px; border-radius:50%;
+    border:3px solid var(--border); border-top-color:var(--accent); animation:busy-spin .8s linear infinite; }
+  #busy-overlay .busy-msg { font-size:14px; font-weight:700; }
+  #busy-overlay .busy-sub { font-size:12px; color:var(--text-dim); margin-top:4px; min-height:16px; }
+  @keyframes busy-spin { to { transform:rotate(360deg); } }
+
   /* 設定のON/OFFスイッチ */
   .pref-switch-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; cursor:pointer; }
   .pref-switch-row .pref-switch-text { font-size:13px; color:var(--text); }
@@ -2578,7 +2590,7 @@
     <div style="display:flex; gap:6px; margin-bottom:12px;">
       <label style="flex:1; position:relative;">
         <input type="file" accept=".json" id="store-import-file" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;">
-        <div class="btn btn-secondary" style="margin-top:0; text-align:center; pointer-events:none; padding:8px; font-size:12px;">📥 JSONからインポート（追加・上書き）</div>
+        <div class="btn btn-secondary" style="margin-top:0; text-align:center; pointer-events:none; padding:8px; font-size:12px;">📥 JSONからインポート（置き換え／追加）</div>
       </label>
     </div>
     <div id="store-editor-list"></div>
@@ -3333,6 +3345,34 @@ function updateStoreDefStatus() {
   el.style.color = stores.length > 0 ? 'var(--accent)' : 'var(--text-dim)';
 }
 
+// ===== 処理中オーバーレイ =====
+function showBusy(msg, sub) {
+  let el = document.getElementById('busy-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'busy-overlay';
+    el.setAttribute('role', 'alert');
+    el.setAttribute('aria-live', 'assertive');
+    el.innerHTML = '<div class="busy-box"><div class="busy-spinner"></div><div class="busy-msg"></div><div class="busy-sub"></div></div>';
+    document.body.appendChild(el);
+  }
+  el.querySelector('.busy-msg').textContent = msg || '保存中…';
+  el.querySelector('.busy-sub').textContent = sub || '';
+  el.classList.add('show');
+}
+function updateBusy(sub) {
+  const el = document.getElementById('busy-overlay');
+  if (el) el.querySelector('.busy-sub').textContent = sub || '';
+}
+function hideBusy() {
+  const el = document.getElementById('busy-overlay');
+  if (el) el.classList.remove('show');
+}
+// 表示を確実に画面へ描かせてから次へ進む
+function _nextPaint() {
+  return new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+}
+
 // ===== 店舗名の表記ゆれ統合 =====
 // 各店エントリは {id, name, aliases?:[別表記...]} 。
 // 「Welcia / welcia / ウエルシア」のような別表記は aliases に持たせ、保存時に name へ揃える。
@@ -3655,6 +3695,8 @@ function openStoreEditor() {
       }
       // 置き換え：今の店カテゴリを捨てて、このファイルの内容だけにする
       const replace = confirm('今の店カテゴリを、このファイルの内容で置き換えますか？\n\nOK：置き換える（ファイルに無い店は消えます）\nキャンセル：今の一覧に追加する');
+      showBusy('保存中…', '店カテゴリを読み込んでいます');
+      await _nextPaint();
       const existing = replace ? [] : loadStoreDefFromStorage();
       // 既存と名前照合して追加/上書き（id保持・重複スキップ）。別表記（aliases）は合流させる
       let addCount = 0, skipCount = 0;
@@ -3671,18 +3713,25 @@ function openStoreEditor() {
         }
       });
       // 別表記として登録された既存エントリを正式名へまとめる
+      updateBusy('表記ゆれをまとめています');
+      await _nextPaint();
       const before = existing.length;
       dedupeStoreDef(existing);
       const mergedCount = before - existing.length;
       _saveStoreDefData(existing);
       renderStoreEditorList();
       storeImport.value = '';
+      updateBusy('レシートの店名をそろえています');
+      await _nextPaint();
       let fixed = 0;
       try { fixed = await migrateStoreBrandsInRecords(); } catch (e3) { console.warn(e3); }
+      hideBusy();
+      await _nextPaint();
       alert(`インポート完了：${addCount}件追加、${skipCount}件スキップ（重複）` +
         (mergedCount ? `\n表記ゆれ ${mergedCount}件を統合` : '') +
         (fixed ? `\nレシート ${fixed}件の店名を統一` : ''));
     } catch(e2) {
+      hideBusy();
       alert(`読み込みエラー：${e2.message}`);
       storeImport.value = '';
     }
@@ -5230,7 +5279,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 17:05';
+const APP_BUILD = '2026-10-09 17:07';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
