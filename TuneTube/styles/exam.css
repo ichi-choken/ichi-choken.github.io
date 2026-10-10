@@ -1,0 +1,16 @@
+/* ===== 受験生モード：落ち着いた見た目と視聴時間の表示 ===== */
+body.mode-exam { --soft: #e0ecf8; --accent: #1d4ed8; }
+@media (prefers-color-scheme: dark) {
+  body.mode-exam { --soft: #1c2a3d; --accent: #93c5fd; }
+}
+body.mode-exam .exam-bar {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+  background: var(--soft); border-radius: var(--radius); padding: 8px 14px; font-weight: 700;
+}
+body.mode-exam .exam-bar progress { flex: 1; height: 10px; accent-color: var(--accent); }
+body.mode-exam .exam-banner:not([hidden]) {
+  display: block; border: 2px solid var(--accent); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 12px; background: var(--card);
+}
+body.mode-exam .exam-banner p { margin: 0; font-weight: 700; }
+body.mode-exam .exam-banner .row { justify-content: flex-start; }

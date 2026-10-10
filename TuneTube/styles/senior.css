@@ -1,0 +1,19 @@
+/* ===== シニアモード：大きな文字・1列・大きなボタン ===== */
+body.mode-senior { --fs: 21px; --tap: 56px; }
+body.mode-senior .results { grid-template-columns: 1fr; gap: 20px; }
+body.mode-senior .card { display: flex; align-items: center; gap: 16px; border-width: 2px; }
+body.mode-senior .card .thumb { width: 42%; max-width: 340px; flex-shrink: 0; }
+body.mode-senior .title { -webkit-line-clamp: 3; }
+body.mode-senior .chip { font-size: 1em; padding: 10px 18px; }
+body.mode-senior .back { width: 100%; font-weight: 700; }
+
+/* プレーヤーの外側に大きな操作ボタンを出す */
+body.mode-senior .big-controls,
+body.mode-exam .big-controls { display: grid; }
+body.mode-senior .big-controls button { min-height: 80px; font-size: 1.05em; font-weight: 700; border-width: 2px; }
+
+@media (max-width: 640px) {
+  body.mode-senior .card { flex-direction: column; align-items: stretch; }
+  body.mode-senior .card .thumb { width: 100%; max-width: none; }
+  body.mode-senior .meta { padding: 10px 12px; }
+}

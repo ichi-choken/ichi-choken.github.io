@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="styles/base.css">
+<title>プライバシーポリシー｜TubeTune</title>
+<style>main{max-width:760px}h1{font-size:1.4em}h2{font-size:1.1em;margin-top:1.6em}table{border-collapse:collapse;width:100%;font-size:.9em}th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}</style>
+</head>
+<body>
+<main>
+<p><a href="./">← アプリに戻る</a></p>
+<h1>TubeTune プライバシーポリシー</h1>
+<p class="hint">最終更新日：2026年10月10日（ハッカソン試作版）</p>
+
+<h2>1．YouTube API Services の利用</h2>
+<p>本アプリは YouTube API Services を使用して，動画の検索・情報の取得・再生を行います．これらの通信には Google のプライバシーポリシーが適用されます．<br>
+<a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google プライバシーポリシー</a></p>
+
+<h2>2．本アプリが保存する情報</h2>
+<p>本アプリには独自のサーバーがありません．以下の情報は，利用者の端末のブラウザ内（localStorage）にのみ保存され，開発者に送信されることはありません．</p>
+<table>
+  <tr><th>情報</th><th>目的</th><th>保存期間</th></tr>
+  <tr><td>APIキー，表示モード，表示設定</td><td>アプリの動作</td><td>利用者が削除するまで</td></tr>
+  <tr><td>登録チャンネル（チャンネルID，名前，アイコンのURL）</td><td>登録チャンネルの一覧表示</td><td>名前とアイコンは7日ごとに再取得して更新</td></tr>
+  <tr><td>検索結果・動画情報の一時キャッシュ</td><td>API利用回数の節約</td><td>最大6時間（最大30件）．期限切れは起動時に削除</td></tr>
+  <tr><td>受験生モードの視聴時間（日付と秒数のみ）</td><td>目標時間の表示</td><td>当日分のみ使用し，翌日以降は上書き</td></tr>
+  <tr><td>API使用量の目安（回数のみ）</td><td>使いすぎの防止</td><td>当日分のみ</td></tr>
+  <tr><td>設定画面のPIN（ハッシュ値）</td><td>設定画面のロック</td><td>利用者が解除するまで</td></tr>
+  <tr><td>同意の記録</td><td>同意画面の表示制御</td><td>利用者が削除するまで</td></tr>
+</table>
+<p>視聴した動画の履歴，検索した言葉の履歴（一時キャッシュを除く），位置情報，連絡先などは保存しません．Googleアカウントへのログインも求めません．</p>
+
+<h2>3．第三者への提供</h2>
+<p>本アプリが保存した情報を，開発者が第三者へ提供・共有することはありません．なお，APIの呼び出しと動画の再生のため，利用者の端末から Google（YouTube）に直接通信が行われます．</p>
+
+<h2>4．子ども向け動画とプレーヤー</h2>
+<p>動画の再生には，YouTube の公式プレーヤーのプライバシー強化モード（youtube-nocookie.com）を使います．本アプリ自体は，広告配信や行動の追跡のためのデータを収集しません．</p>
+
+<h2>5．情報の削除</h2>
+<ul>
+  <li>アプリの「設定」→「保存データをすべて削除」から，本アプリが保存したすべての情報を，その場で削除できます．</li>
+  <li>ブラウザのサイトデータを削除することでも消去できます．</li>
+</ul>
+
+<h2>6．お問い合わせ</h2>
+<p>本ポリシーに関するお問い合わせは，<a href="https://github.com/ichi-choken" target="_blank" rel="noopener">開発者のGitHub</a> までお願いします．</p>
+
+<p><a href="terms.html">利用条件</a></p>
+</main>
+</body>
+</html>
