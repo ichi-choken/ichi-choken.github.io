@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="theme-color" content="#c2410c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TubeTune">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>TubeTune</title>
+<style>
+:root{
+  --bg:#f6f6f3; --fg:#1d1d1f; --sub:#5f6368; --card:#ffffff; --line:#dcdcd8;
+  --accent:#c2410c; --accent-fg:#ffffff; --soft:#fde7dc; --fs:16px; --radius:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141414; --fg:#ececec; --sub:#a8a8a8; --card:#1f1f1f; --line:#333;
+    --accent:#fb923c; --accent-fg:#141414; --soft:#3a2418;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141414; --fg:#ececec; --sub:#a8a8a8; --card:#1f1f1f; --line:#333;
+  --accent:#fb923c; --accent-fg:#141414; --soft:#3a2418;
+}
+body.senior{ --fs:22px; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:var(--fs)/1.6 system-ui,"Hiragino Sans","Noto Sans JP",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line)}
+.bar{max-width:1100px;margin:0 auto;padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.logo{font-weight:800;font-size:1.15em;margin-right:6px;letter-spacing:.02em}
+.logo span{color:var(--accent)}
+#q{flex:1 1 220px;min-width:0;font-size:1em;padding:9px 12px;border:1px solid var(--line);
+  border-radius:10px;background:var(--bg);color:var(--fg)}
+button,select{font:inherit;font-size:.95em;padding:8px 14px;border-radius:10px;
+  border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+body.senior .adv{display:none !important}
+main{max-width:1100px;margin:0 auto;padding:16px}
+#status{color:var(--sub);margin:0 0 12px;min-height:1.6em}
+#notice{background:var(--soft);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;display:none}
+#results{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+body.senior #results{grid-template-columns:1fr;gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  cursor:pointer;text-align:left;padding:0;display:block;width:100%;font-size:1em}
+.card:hover{border-color:var(--accent)}
+body.senior .card{display:flex;align-items:center;gap:16px;border-width:2px}
+.thumb{position:relative}
+.thumb img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:var(--line)}
+body.senior .thumb{width:42%;max-width:340px;flex-shrink:0}
+.dur{position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.78);color:#fff;
+  font-size:.8em;padding:1px 6px;border-radius:6px}
+.meta{padding:10px 12px}
+.title{font-weight:700;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+body.senior .title{-webkit-line-clamp:3}
+.sub{color:var(--sub);font-size:.85em}
+#playerView{display:none}
+body.playing #playerView{display:block}
+body.playing #listView{display:none}
+.frame{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:var(--radius);overflow:hidden}
+.frame > div, .frame iframe{position:absolute;inset:0;width:100%;height:100%}
+#nowTitle{font-weight:700;margin:12px 0 4px}
+#nowSub{color:var(--sub);margin:0 0 12px}
+#seniorControls{display:none;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
+body.senior #seniorControls{display:grid}
+#seniorControls button{min-height:72px;font-size:1.05em;font-weight:700;border-width:2px}
+#btnPlay{grid-column:1 / -1}
+#volText,#stateText{text-align:center;color:var(--sub)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--fg);
+  width:min(560px,calc(100% - 32px));padding:20px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h2{margin:0 0 12px;font-size:1.2em}
+dialog label{display:block;margin:12px 0 4px;font-weight:700}
+dialog input[type=text],dialog input[type=password]{width:100%;font-size:1em;padding:9px 12px;
+  border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg)}
+.check{display:flex;gap:8px;align-items:center;font-weight:400 !important}
+.hint{color:var(--sub);font-size:.85em;margin:4px 0 0}
+#quota{color:var(--sub);font-size:.85em}
+.empty{padding:40px 16px;text-align:center;color:var(--sub)}
+
+/* ===== スマホ対応 ===== */
+header{padding-top:env(safe-area-inset-top)}
+.bar,main{padding-left:max(16px, env(safe-area-inset-left));padding-right:max(16px, env(safe-area-inset-right))}
+main{padding-bottom:max(16px, env(safe-area-inset-bottom))}
+button,select{min-height:44px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#q{min-height:44px;font-size:16px} /* 16px未満だとiOSで入力時に拡大される */
+body.senior #q{font-size:1em}
+#btnInstall{display:none}
+body.can-install #btnInstall{display:inline-block}
+@media (max-width:640px){
+  .bar{gap:6px}
+  .logo{flex:1 0 auto}
+  #q{order:10;flex:1 1 100%}
+  #searchForm > button[type=submit]{order:11}
+  #order,#period{order:12;flex:1 1 40%;font-size:.85em}
+  #results{grid-template-columns:1fr}
+  .card{display:flex;align-items:flex-start;gap:10px}
+  .thumb{width:44%;flex-shrink:0}
+  .meta{padding:6px 8px 6px 0}
+  body.senior .card{flex-direction:column;align-items:stretch}
+  body.senior .thumb{width:100%;max-width:none}
+  body.senior .meta{padding:10px 12px}
+  #seniorControls button{min-height:80px}
+}
+#iosGuide ol{padding-left:1.4em;margin:8px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="logo">Tube<span>Tune</span></div>
+    <form id="searchForm" style="display:contents">
+      <input id="q" type="search" placeholder="見たい動画を検索" autocomplete="off" enterkeyhint="search">
+      <select id="order" class="adv" title="並び順">
+        <option value="relevance">関連度順</option>
+        <option value="date">新しい順</option>
+        <option value="viewCount">再生回数順</option>
+        <option value="rating">評価順</option>
+      </select>
+      <select id="period" class="adv" title="投稿時期">
+        <option value="">期間指定なし</option>
+        <option value="1y">1年以上前の動画</option>
+        <option value="5y">5年以上前の動画</option>
+        <option value="10y">10年以上前の動画</option>
+      </select>
+      <button class="primary" type="submit">検索</button>
+    </form>
+    <button id="btnMode" type="button">シニアモード</button>
+    <button id="btnSettings" type="button" class="adv">設定</button>
+    <button id="btnInstall" type="button">ホーム画面に追加</button>
+  </div>
+</header>
+
+<main>
+  <section id="listView">
+    <div id="notice"></div>
+    <p id="status">キーワードを入れて「検索」を押してください．</p>
+    <div id="results"></div>
+  </section>
+
+  <section id="playerView">
+    <button id="btnBackTop" type="button">← 一覧へ戻る</button>
+    <div class="frame" style="margin-top:12px"><div id="player"></div></div>
+    <p id="nowTitle"></p>
+    <p id="nowSub"></p>
+    <div id="seniorControls">
+      <button id="btnPlay" class="primary" type="button">▶ 再生</button>
+      <button id="btnRew" type="button">⟲ 10秒戻る</button>
+      <button id="btnFwd" type="button">10秒進む ⟳</button>
+      <button id="btnVolDown" type="button">🔉 音を小さく</button>
+      <button id="btnVolUp" type="button">🔊 音を大きく</button>
+      <div id="stateText">準備中</div>
+      <div id="volText"></div>
+      <button id="btnBack" type="button" style="grid-column:1 / -1">← 一覧へ戻る</button>
+    </div>
+    <div id="errBox" class="row"></div>
+  </section>
+</main>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h2>設定</h2>
+    <label for="apiKey">YouTube Data API キー</label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="AIza...">
+    <p class="hint">キーはこのブラウザ内にのみ保存されます．Google Cloud 側で HTTP リファラー制限をかけてください．</p>
+    <label class="check"><input id="optHideShorts" type="checkbox" checked> ショート動画を表示しない</label>
+    <label class="check"><input id="optSenior" type="checkbox"> シニアモードで起動する</label>
+    <p id="quota"></p>
+    <div class="row">
+      <button id="btnClearCache" type="button">検索キャッシュを消去</button>
+      <button class="primary" value="save">保存して閉じる</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="iosGuide">
+  <form method="dialog">
+    <h2>ホーム画面に追加する方法</h2>
+    <ol>
+      <li>画面下（iPadは上）の共有ボタン <strong>⬆</strong> を押す</li>
+      <li>「ホーム画面に追加」を選ぶ</li>
+      <li>右上の「追加」を押す</li>
+    </ol>
+    <p class="hint">追加すると，ホーム画面のアイコンからアプリのように開けます．</p>
+    <div class="row"><button class="primary" value="ok">わかりました</button></div>
+  </form>
+</dialog>
+
+<script>
+// ===== 設定値 =====
+const SHORTS_MAX_SEC = 180;          // ショートの最大長（2024年10月以降は3分）
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 検索キャッシュの有効期間（6時間）
+const DAILY_QUOTA = 10000;           // APIの1日の無料枠（ユニット）
+const COST_SEARCH = 100;
+const COST_VIDEOS = 1;
+const MAX_RESULTS = 25;
+const SENIOR_MAX_ITEMS = 8;
+const STORE_PREFIX = 'tubetune:';
+
+// ===== 保存（localStorage は失敗しても動くように） =====
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(STORE_PREFIX + k); return v === null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(STORE_PREFIX + k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(STORE_PREFIX + k); }catch(e){} },
+  keys(){ try{ return Object.keys(localStorage).filter(k => k.startsWith(STORE_PREFIX)); }catch(e){ return []; } }
+};
+
+const $ = s => document.querySelector(s);
+const state = {
+  settings: Object.assign({ apiKey:'', hideShorts:true, senior:false }, store.get('settings', {})),
+  items: [],
+  player: null,
+  apiReady: false,
+  pendingVideo: null,
+  current: null,
+  timer: null
+};
+
+// ===== 表示ユーティリティ =====
+function parseDuration(iso){
+  const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || '');
+  if(!m) return 0;
+  return (+m[1]||0)*86400 + (+m[2]||0)*3600 + (+m[3]||0)*60 + (+m[4]||0);
+}
+function fmtDuration(sec){
+  if(!sec) return 'ライブ';
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  const pad = n => String(n).padStart(2,'0');
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+function fmtCount(n){
+  n = +n || 0;
+  if(n >= 1e8) return (n/1e8).toFixed(1).replace(/\.0$/,'') + '億回';
+  if(n >= 1e4) return (n/1e4).toFixed(1).replace(/\.0$/,'') + '万回';
+  return n + '回';
+}
+function fmtDate(iso){ return new Date(iso).toLocaleDateString('ja-JP', {year:'numeric', month:'long', day:'numeric'}); }
+function setStatus(t){ $('#status').textContent = t; }
+function setNotice(t){ const n = $('#notice'); n.textContent = t; n.style.display = t ? 'block' : 'none'; }
+
+// ===== クォータの推定（太平洋時間の0時でリセット） =====
+function quotaDay(){ return new Date().toLocaleDateString('en-CA', {timeZone:'America/Los_Angeles'}); }
+function getQuota(){ const q = store.get('quota', {day:'', used:0}); return q.day === quotaDay() ? q : {day:quotaDay(), used:0}; }
+function addQuota(u){ const q = getQuota(); q.used += u; store.set('quota', q); }
+function renderQuota(){ const q = getQuota(); $('#quota').textContent = `本日の推定API使用量：${q.used} / ${DAILY_QUOTA} ユニット（検索1回＝約${COST_SEARCH + COST_VIDEOS}）`; }
+
+// ===== YouTube Data API =====
+async function api(endpoint, params){
+  const url = `https://www.googleapis.com/youtube/v3/${endpoint}?` + new URLSearchParams(params);
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok){
+    const reason = data.error && data.error.errors && data.error.errors[0] && data.error.errors[0].reason;
+    if(reason === 'quotaExceeded') throw new Error('今日のAPI使用量の上限に達しました．日本時間の夕方（太平洋時間0時）以降に再度お試しください．');
+    if(reason === 'keyInvalid' || res.status === 400) throw new Error('APIキーが正しくない可能性があります．設定を確認してください．');
+    if(res.status === 403) throw new Error('APIへのアクセスが拒否されました．キーの制限（リファラー）設定を確認してください．');
+    throw new Error(`APIエラー（${res.status}）`);
+  }
+  return data;
+}
+
+function publishedBefore(period){
+  if(!period) return null;
+  const years = parseInt(period, 10);
+  const d = new Date(); d.setFullYear(d.getFullYear() - years);
+  return d.toISOString();
+}
+
+async function search(q){
+  const key = state.settings.apiKey;
+  if(!key){ openSettings(); setStatus('最初にAPIキーを設定してください．'); return; }
+  const order = $('#order').value;
+  const period = $('#period').value;
+  const cacheKey = `cache:${order}:${period}:${q}`;
+  const cached = store.get(cacheKey, null);
+  if(cached && Date.now() - cached.t < CACHE_TTL_MS){
+    state.items = cached.items; render(); return;
+  }
+  setStatus('検索中…'); setNotice('');
+  $('#results').replaceChildren();
+  try{
+    const params = { part:'snippet', type:'video', maxResults:String(MAX_RESULTS), q, order,
+      regionCode:'JP', relevanceLanguage:'ja', safeSearch:'moderate', key };
+    const before = publishedBefore(period);
+    if(before) params.publishedBefore = before;
+    const s = await api('search', params); addQuota(COST_SEARCH);
+    const ids = (s.items || []).map(i => i.id && i.id.videoId).filter(Boolean);
+    if(!ids.length){ state.items = []; render(); return; }
+    const v = await api('videos', { part:'snippet,contentDetails,statistics', id:ids.join(','), key }); addQuota(COST_VIDEOS);
+    const map = new Map((v.items || []).map(it => [it.id, {
+      id: it.id,
+      title: it.snippet.title,
+      channel: it.snippet.channelTitle,
+      published: it.snippet.publishedAt,
+      thumb: (it.snippet.thumbnails.medium || it.snippet.thumbnails.default || {}).url || '',
+      sec: parseDuration(it.contentDetails.duration),
+      views: it.statistics ? it.statistics.viewCount : 0,
+      live: it.snippet.liveBroadcastContent
+    }]));
+    state.items = ids.map(id => map.get(id)).filter(Boolean);
+    store.set(cacheKey, { t: Date.now(), items: state.items });
+    render();
+  }catch(e){
+    setStatus(e.message);
+  }
+}
+
+function isShort(it){
+  if(/#shorts?\b/i.test(it.title)) return true;
+  return it.sec > 0 && it.sec <= SHORTS_MAX_SEC;
+}
+
+// ===== 一覧の描画 =====
+function render(){
+  const box = $('#results');
+  box.replaceChildren();
+  let list = state.items;
+  let removed = 0;
+  if(state.settings.hideShorts){
+    const kept = list.filter(it => !isShort(it));
+    removed = list.length - kept.length;
+    list = kept;
+  }
+  if(state.settings.senior) list = list.slice(0, SENIOR_MAX_ITEMS);
+  setNotice(removed ? `ショートの可能性がある動画を ${removed} 件非表示にしました．` : '');
+  if(!list.length){
+    setStatus('');
+    const d = document.createElement('div'); d.className = 'empty';
+    d.textContent = '表示できる動画が見つかりませんでした．別の言葉で検索してみてください．';
+    box.append(d); return;
+  }
+  setStatus(state.settings.senior ? '見たい動画を押してください．' : `${list.length} 件の動画`);
+  for(const it of list){
+    const card = document.createElement('button');
+    card.type = 'button'; card.className = 'card';
+    const th = document.createElement('div'); th.className = 'thumb';
+    const img = document.createElement('img'); img.src = it.thumb; img.alt = ''; img.loading = 'lazy';
+    const dur = document.createElement('span'); dur.className = 'dur'; dur.textContent = fmtDuration(it.sec);
+    th.append(img, dur);
+    const meta = document.createElement('div'); meta.className = 'meta';
+    const t = document.createElement('div'); t.className = 'title'; t.textContent = it.title;
+    const sub = document.createElement('div'); sub.className = 'sub';
+    sub.textContent = state.settings.senior ? it.channel : `${it.channel}・${fmtCount(it.views)}・${fmtDate(it.published)}`;
+    meta.append(t, sub);
+    card.append(th, meta);
+    card.addEventListener('click', () => openVideo(it));
+    box.append(card);
+  }
+}
+
+// ===== プレーヤー =====
+window.onYouTubeIframeAPIReady = function(){
+  state.apiReady = true;
+  if(state.pendingVideo){ const v = state.pendingVideo; state.pendingVideo = null; createPlayer(v); }
+};
+
+function openVideo(it){
+  state.current = it;
+  document.body.classList.add('playing');
+  $('#nowTitle').textContent = it.title;
+  $('#nowSub').textContent = `${it.channel}・${fmtDate(it.published)}`;
+  $('#errBox').replaceChildren();
+  window.scrollTo(0, 0);
+  if(state.apiReady) createPlayer(it); else state.pendingVideo = it;
+}
+
+function createPlayer(it){
+  destroyPlayer();
+  const holder = document.createElement('div'); holder.id = 'player';
+  $('.frame').replaceChildren(holder);
+  const senior = state.settings.senior;
+  state.player = new YT.Player('player', {
+    videoId: it.id,
+    playerVars: {
+      autoplay: 1, playsinline: 1, rel: 0, iv_load_policy: 3,
+      // iPhoneは最初の再生を動画に直接触れないと始められないことがあるため，標準の操作バーを残す
+      controls: senior && !isIOS ? 0 : 1,
+      disablekb: senior ? 1 : 0,
+      fs: senior ? 0 : 1,
+      origin: location.origin
+    },
+    events: {
+      onReady: () => { updateSeniorUI(); state.timer = setInterval(updateSeniorUI, 1000); },
+      onStateChange: updateSeniorUI,
+      onError: e => showPlayerError(e.data)
+    }
+  });
+}
+
+function destroyPlayer(){
+  if(state.timer){ clearInterval(state.timer); state.timer = null; }
+  if(state.player && state.player.destroy){ try{ state.player.destroy(); }catch(e){} }
+  state.player = null;
+}
+
+function showPlayerError(code){
+  const box = $('#errBox'); box.replaceChildren();
+  const p = document.createElement('p');
+  p.textContent = (code === 101 || code === 150 || code === 153)
+    ? 'この動画は投稿者の設定により，ここでは再生できません．'
+    : `動画を再生できませんでした（エラー ${code}）．`;
+  const a = document.createElement('a');
+  a.href = `https://www.youtube.com/watch?v=${state.current.id}`; a.target = '_blank'; a.rel = 'noopener';
+  a.textContent = 'YouTubeで開く';
+  box.append(p, a);
+}
+
+function closeVideo(){
+  destroyPlayer();
+  document.body.classList.remove('playing');
+}
+
+function updateSeniorUI(){
+  const p = state.player;
+  if(!p || !p.getPlayerState) return;
+  const st = p.getPlayerState();
+  const playing = st === YT.PlayerState.PLAYING || st === YT.PlayerState.BUFFERING;
+  $('#btnPlay').textContent = playing ? '⏸ 一時停止' : '▶ 再生';
+  const label = {[-1]:'準備中', 0:'終わりました', 1:'再生中', 2:'一時停止中', 3:'読み込み中', 5:'準備完了'}[st] || '';
+  const cur = Math.floor(p.getCurrentTime ? p.getCurrentTime() : 0);
+  const total = Math.floor(p.getDuration ? p.getDuration() : 0);
+  $('#stateText').textContent = `${label}　${fmtDuration(cur) === 'ライブ' ? '0:00' : fmtDuration(cur)} / ${fmtDuration(total)}`;
+  const vol = p.isMuted && p.isMuted() ? 0 : (p.getVolume ? p.getVolume() : 0);
+  $('#volText').textContent = `音量 ${vol}`;
+}
+
+function seek(delta){
+  const p = state.player; if(!p || !p.getCurrentTime) return;
+  p.seekTo(Math.max(0, p.getCurrentTime() + delta), true);
+}
+function changeVolume(delta){
+  const p = state.player; if(!p || !p.getVolume) return;
+  if(p.isMuted()) p.unMute();
+  p.setVolume(Math.min(100, Math.max(0, p.getVolume() + delta)));
+  setTimeout(updateSeniorUI, 100);
+}
+
+// ===== モード・設定 =====
+function applyMode(){
+  document.body.classList.toggle('senior', state.settings.senior);
+  $('#btnMode').textContent = state.settings.senior ? '標準モードへ' : 'シニアモード';
+  render();
+  if(state.current && document.body.classList.contains('playing') && state.apiReady) createPlayer(state.current);
+}
+
+function openSettings(){
+  $('#apiKey').value = state.settings.apiKey;
+  $('#optHideShorts').checked = state.settings.hideShorts;
+  $('#optSenior').checked = state.settings.senior;
+  renderQuota();
+  $('#settings').showModal();
+}
+
+$('#settings').addEventListener('close', () => {
+  if($('#settings').returnValue !== 'save') return;
+  state.settings.apiKey = $('#apiKey').value.trim();
+  state.settings.hideShorts = $('#optHideShorts').checked;
+  state.settings.senior = $('#optSenior').checked;
+  store.set('settings', state.settings);
+  applyMode();
+});
+
+$('#btnClearCache').addEventListener('click', () => {
+  store.keys().filter(k => k.startsWith(STORE_PREFIX + 'cache:')).forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
+  $('#btnClearCache').textContent = '消去しました';
+});
+
+$('#searchForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const q = $('#q').value.trim();
+  if(!q) return;
+  closeVideo();
+  search(q);
+});
+$('#btnMode').addEventListener('click', () => {
+  state.settings.senior = !state.settings.senior;
+  store.set('settings', state.settings);
+  applyMode();
+});
+$('#btnSettings').addEventListener('click', openSettings);
+$('#btnBack').addEventListener('click', closeVideo);
+$('#btnBackTop').addEventListener('click', closeVideo);
+$('#btnPlay').addEventListener('click', () => {
+  const p = state.player; if(!p || !p.getPlayerState) return;
+  p.getPlayerState() === YT.PlayerState.PLAYING ? p.pauseVideo() : p.playVideo();
+});
+$('#btnRew').addEventListener('click', () => seek(-10));
+$('#btnFwd').addEventListener('click', () => seek(10));
+$('#btnVolDown').addEventListener('click', () => changeVolume(-10));
+$('#btnVolUp').addEventListener('click', () => changeVolume(10));
+
+// ===== PWA（ホーム画面に追加・オフライン起動） =====
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installEvent = null;
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+// Android（Chrome等）：ブラウザが出す追加イベントを保持してボタンから使う
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installEvent = e;
+  document.body.classList.add('can-install');
+});
+window.addEventListener('appinstalled', () => {
+  installEvent = null;
+  document.body.classList.remove('can-install');
+});
+// iPhone（Safari）：追加イベントがないので手順を案内する
+if(isIOS && !isStandalone) document.body.classList.add('can-install');
+
+$('#btnInstall').addEventListener('click', async () => {
+  if(installEvent){
+    installEvent.prompt();
+    await installEvent.userChoice.catch(() => {});
+    installEvent = null;
+    document.body.classList.remove('can-install');
+  }else if(isIOS){
+    $('#iosGuide').showModal();
+  }
+});
+
+// ===== 起動 =====
+applyMode();
+if(!state.settings.apiKey) setStatus('右上の「設定」からAPIキーを登録すると検索できます．');
+const tag = document.createElement('script');
+tag.src = 'https://www.youtube.com/iframe_api';
+document.head.append(tag);
+</script>
+</body>
+</html>
