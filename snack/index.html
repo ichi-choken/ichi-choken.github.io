@@ -1,0 +1,1438 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf7f0">
+<title>おやつ期限ノート</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f6f2ea;
+  --surface: #fffdf8;
+  --surface-2: #f1ece2;
+  --ink: #1f1d1a;
+  --ink-2: #57524a;
+  --muted: #8a8378;
+  --line: #e4dccd;
+  --rule: #d9e3ec;
+  --margin: #e8a3a0;
+  --accent: #d9581f;
+  --accent-ink: #ffffff;
+  --accent-soft: #fbe7dc;
+  --danger: #c0352f;
+  --danger-soft: #fbe3e1;
+  --warn: #9a6400;
+  --warn-soft: #fbefd6;
+  --ok: #2f7d4a;
+  --series-1: #2a78d6;
+  --grid: #e8e4dc;
+  --shadow: 0 1px 2px rgba(40,30,10,.06), 0 4px 14px rgba(40,30,10,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #161513;
+    --surface: #201e1b;
+    --surface-2: #2a2723;
+    --ink: #f0ece4;
+    --ink-2: #c9c2b6;
+    --muted: #9b9488;
+    --line: #38342e;
+    --rule: #2e3a46;
+    --margin: #7a3c3a;
+    --accent: #ef7a45;
+    --accent-ink: #1a0f08;
+    --accent-soft: #3a2519;
+    --danger: #ef6b65;
+    --danger-soft: #3a1f1d;
+    --warn: #e0a740;
+    --warn-soft: #382c16;
+    --ok: #6cc28a;
+    --series-1: #3987e5;
+    --grid: #33302b;
+    --shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #161513;
+  --surface: #201e1b;
+  --surface-2: #2a2723;
+  --ink: #f0ece4;
+  --ink-2: #c9c2b6;
+  --muted: #9b9488;
+  --line: #38342e;
+  --rule: #2e3a46;
+  --margin: #7a3c3a;
+  --accent: #ef7a45;
+  --accent-ink: #1a0f08;
+  --accent-soft: #3a2519;
+  --danger: #ef6b65;
+  --danger-soft: #3a1f1d;
+  --warn: #e0a740;
+  --warn-soft: #382c16;
+  --ok: #6cc28a;
+  --series-1: #3987e5;
+  --grid: #33302b;
+  --shadow: 0 1px 2px rgba(0,0,0,.3);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, select { font: inherit; color: inherit; }
+header.app {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+}
+header.app .row { max-width: 640px; margin: 0 auto; display: flex; align-items: center; gap: 10px; }
+header.app h1 { font-size: 17px; margin: 0; letter-spacing: .02em; white-space: nowrap; }
+header.app .build { font-size: 11px; line-height: 1.3; color: var(--muted); margin-left: auto; text-align: right; white-space: nowrap; }
+header.app .gear { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; width: 38px; height: 38px; font-size: 18px; cursor: pointer; flex: none; align-self: center; }
+header.app .gear[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+#updateBanner { display: none; max-width: 640px; margin: 8px auto 0; font-size: 13px; background: var(--accent-soft); border-radius: 10px; padding: 8px 12px; }
+#updateBanner button { margin-left: 8px; }
+main { max-width: 640px; margin: 0 auto; padding: 16px 16px calc(96px + env(safe-area-inset-bottom)); }
+nav.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+nav.tabs .inner { max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+nav.tabs button {
+  border: 0; background: none; padding: 8px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-size: 11px; color: var(--muted); cursor: pointer;
+}
+nav.tabs button .ic { font-size: 20px; line-height: 1.2; }
+nav.tabs button[aria-current="page"] { color: var(--accent); font-weight: 600; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.card h2 { font-size: 16px; margin: 0 0 8px; }
+.card h3 { font-size: 14px; margin: 14px 0 6px; color: var(--ink-2); }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 10px;
+  padding: 10px 14px; cursor: pointer; font-weight: 600; min-height: 44px;
+}
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.btn.block { width: 100%; }
+.btn.big { min-height: 64px; font-size: 17px; border-radius: 14px; }
+.btn.link { border: 0; background: none; min-height: 0; padding: 6px 4px; color: var(--accent); font-weight: 600; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.btnrow .btn { flex: 1 1 auto; }
+.steps { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.steps span { font-size: 12px; padding: 4px 10px; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
+.steps span.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.steps span.done { background: var(--accent-soft); color: var(--accent); }
+.err { background: var(--danger-soft); color: var(--danger); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; margin-bottom: 12px; white-space: pre-wrap; }
+.note-box { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; margin: 8px 0; }
+.prod { display: flex; gap: 12px; align-items: center; }
+.thumb { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: var(--surface-2); flex: none; border: 1px solid var(--line); }
+.thumb.sm { width: 40px; height: 40px; border-radius: 8px; }
+.prod .t { font-weight: 600; }
+.chip { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 99px; background: var(--surface-2); color: var(--ink-2); margin-right: 4px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; min-width: 0; }
+.field label { font-size: 12px; color: var(--muted); }
+.field input, .field select {
+  border: 1px solid var(--line); background: var(--bg); border-radius: 9px; padding: 9px 10px; min-height: 42px; width: 100%; min-width: 0;
+}
+.field input:focus, .field select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 0; }
+.quicklist { display: flex; flex-direction: column; }
+.quicklist button { display: flex; gap: 10px; align-items: center; text-align: left; border: 0; border-top: 1px solid var(--line); background: none; padding: 10px 2px; cursor: pointer; }
+.quicklist button:first-child { border-top: 0; }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.busy { display: flex; gap: 14px; align-items: center; }
+input[type=file] { display: none; }
+
+/* ノート */
+.pages { display: flex; gap: 0; margin-bottom: -1px; position: relative; z-index: 1; }
+.pages button {
+  flex: 1; border: 1px solid var(--line); border-bottom: 0; background: var(--surface-2); color: var(--muted);
+  border-radius: 12px 12px 0 0; padding: 9px 4px; cursor: pointer; font-weight: 600; font-size: 13.5px; margin-right: 4px;
+}
+.pages button:last-child { margin-right: 0; }
+.pages button[aria-selected="true"] { background: var(--surface); color: var(--ink); }
+.pages .n { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 99px; font-size: 11.5px; background: var(--line); color: var(--ink-2); margin-left: 4px; }
+.paper {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 0 0 14px 14px; position: relative; min-height: 360px;
+  padding: 6px 0 24px; box-shadow: var(--shadow);
+}
+.paper::before { content: ""; position: absolute; top: 0; bottom: 0; left: 52px; width: 2px; background: var(--margin); opacity: .55; }
+.paper .title { padding: 10px 16px 8px 64px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--rule); }
+.nrow { display: flex; align-items: center; min-height: 60px; border-bottom: 1px solid var(--rule); position: relative; }
+.nrow .ck {
+  width: 52px; flex: none; display: flex; align-items: center; justify-content: center; align-self: stretch;
+  border: 0; background: none; cursor: pointer; padding: 0;
+}
+.nrow .ck span { width: 24px; height: 24px; border: 2px solid var(--ink-2); border-radius: 5px; display: block; background: var(--surface); }
+.nrow .body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 14px; border: 0; background: none; text-align: left; cursor: pointer; }
+.nrow .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nrow .meta { font-size: 12.5px; color: var(--ink-2); }
+.nrow .left { margin-left: auto; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.exp-late { color: var(--danger); font-weight: 600; }
+.exp-soon { color: var(--danger); }
+.exp-week { color: var(--warn); }
+.nrow.late { background: color-mix(in srgb, var(--danger-soft) 60%, transparent); }
+.empty { padding: 40px 16px 20px 64px; color: var(--muted); }
+.done-head { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; border-top: 1px solid var(--line); background: none; padding: 14px 16px 12px 64px; color: var(--ink-2); cursor: pointer; font-size: 14px; text-align: left; margin-top: 16px; }
+.done-head .chev { display: inline-block; transition: transform .15s; font-size: 12px; }
+.done-head[aria-expanded="false"] .chev { transform: rotate(180deg); }
+.nrow.done .ck span { background: var(--ink-2); border-color: var(--ink-2); position: relative; }
+.nrow.done .ck span::after { content: ""; position: absolute; left: 6px; top: 1px; width: 6px; height: 12px; border: solid var(--surface); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+.nrow.done .name { text-decoration: line-through; color: var(--muted); font-weight: 500; }
+.nrow.done .thumb { opacity: .55; }
+.kind { font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid currentColor; margin-right: 4px; }
+
+/* シート */
+.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); width: 100%; max-width: 640px; border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); max-height: 88vh; overflow: auto; }
+.sheet h2 { font-size: 17px; margin: 0 0 12px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.seg button { flex: 1; border: 0; background: none; padding: 9px 4px; cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--ink-2); border-left: 1px solid var(--line); min-height: 40px; }
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.stepper { display: flex; align-items: center; gap: 12px; }
+.stepper button { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 20px; cursor: pointer; }
+.stepper output { font-size: 20px; font-weight: 700; min-width: 3ch; text-align: center; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { border: 1px solid var(--line); background: var(--bg); border-radius: 99px; padding: 6px 12px; cursor: pointer; min-height: 36px; }
+.chips button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 60; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 10px 14px; font-size: 14px; display: flex; gap: 12px; align-items: center; width: max-content; max-width: calc(100% - 32px); box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+.toast button { background: none; border: 0; color: var(--accent); font-weight: 700; cursor: pointer; padding: 4px; white-space: nowrap; flex: none; }
+
+/* 分析 */
+.filters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.filters .seg { margin-bottom: 0; }
+.filters .seg button { white-space: nowrap; padding: 9px 2px; }
+.hero { font-size: 48px; font-weight: 700; line-height: 1.05; letter-spacing: -.01em; }
+.hero small { font-size: 16px; font-weight: 600; color: var(--ink-2); margin-left: 4px; }
+.kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
+.kpi { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; }
+.kpi .v { font-weight: 700; font-size: 17px; }
+.kpi .l { font-size: 12px; color: var(--muted); }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12.5px; border-radius: 8px; padding: 6px 9px; white-space: nowrap; transform: translate(-50%, -100%); display: none; }
+.hbar { display: grid; grid-template-columns: 7.5em 1fr auto; gap: 8px; align-items: center; font-size: 13px; margin: 6px 0; }
+.hbar .track { height: 12px; background: var(--surface-2); border-radius: 0 4px 4px 0; overflow: hidden; }
+.hbar .fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; }
+.hbar .val { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+.list li:first-child { border-top: 0; }
+.list .r { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.data th, table.data td { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+details summary { cursor: pointer; color: var(--ink-2); font-size: 13.5px; padding: 4px 0; }
+@media (max-width: 380px) { .grid3 { grid-template-columns: 1fr 1fr; } .hero { font-size: 40px; } }
+</style>
+</head>
+<body>
+<header class="app">
+  <div class="row"><h1>🍪 おやつ期限ノート</h1><span class="build" id="buildLabel"></span><button class="gear" id="gearBtn" aria-label="設定" aria-pressed="false">⚙️</button></div>
+  <div id="updateBanner">新しい版が公開されています．<button class="btn link" onclick="location.reload()">再読み込み</button></div>
+</header>
+<main id="main"></main>
+<nav class="tabs" aria-label="タブ"><div class="inner">
+  <button data-tab="add"><span class="ic">📷</span>追加</button>
+  <button data-tab="note"><span class="ic">📒</span>ノート</button>
+  <button data-tab="stats"><span class="ic">📊</span>分析</button>
+</div></nav>
+<input type="file" id="fileCam" accept="image/*" capture="environment">
+<input type="file" id="fileLib" accept="image/*" multiple>
+<div id="overlay"></div>
+
+<script>
+const APP_BUILD = '2026-10-13 16:01';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
+
+/* CORE-START: 画面に依存しない計算処理（テスト対象） */
+const MIDS = {
+  'スナック菓子': ['ポテトチップス', 'コーン・小麦系スナック', 'せんべい・米菓', 'ナッツ・豆菓子', 'その他スナック'],
+  'チョコレート': ['板チョコ', '個包装チョコ', 'チョコ菓子', 'その他チョコ'],
+  '焼き菓子': ['クッキー・ビスケット', 'ケーキ・パイ', 'その他焼き菓子'],
+  '飴・グミ・ガム': ['飴', 'グミ', 'ガム', 'ラムネ・タブレット'],
+  '和菓子': ['団子・餅', 'まんじゅう・羊羹', 'その他和菓子'],
+  'アイス': ['アイスクリーム類', '氷菓'],
+  'パン・生菓子': ['菓子パン', '惣菜パン', 'シュークリーム・プリン', 'その他生菓子'],
+  '飲料': ['お茶', '水', 'コーヒー', '炭酸飲料', 'ジュース・果汁', '乳飲料・ヨーグルト飲料', 'スポーツ・エナジー', 'その他飲料'],
+  'その他': ['その他'],
+};
+const MID_NAMES = Object.keys(MIDS);
+const ALL_SMALLS = [...new Set(Object.values(MIDS).flat())];
+const NUTRI = [
+  { key: 'kcal', label: 'エネルギー', unit: 'kcal', digits: 0 },
+  { key: 'protein', label: 'たんぱく質', unit: 'g', digits: 1 },
+  { key: 'fat', label: '脂質', unit: 'g', digits: 1 },
+  { key: 'carbs', label: '炭水化物', unit: 'g', digits: 1 },
+  { key: 'salt', label: '食塩相当量', unit: 'g', digits: 2 },
+];
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function ymd(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function parseYmd(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function addDays(s, n) { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }
+function diffDays(a, b) { return Math.round((parseYmd(b) - parseYmd(a)) / 86400000); } // b - a
+function lastDayOfMonth(y, m) { return new Date(y, m, 0).getDate(); }
+
+function fixCategory(mid, small) {
+  if (!MIDS[mid]) mid = 'その他';
+  const list = MIDS[mid];
+  if (!list.includes(small)) small = list[list.length - 1];
+  return { mid, small };
+}
+
+// Gemini の期限読み取り結果 {year, month, day, precision} を YYYY-MM-DD にする．
+// 年月だけの表示は月末．年が無い・2桁のときは今日に近い未来側の年を採る．
+function normalizeExpiry(r, today) {
+  if (!r || r.precision === 'none' || !r.month) return { expiry: null, precision: 'none' };
+  const m = Number(r.month);
+  if (!(m >= 1 && m <= 12)) return { expiry: null, precision: 'none' };
+  let y = (r.year === null || r.year === undefined || r.year === '') ? null : Number(r.year);
+  if (y !== null && y < 100) y += 2000;
+  const dayWanted = (r.precision === 'day' && r.day) ? Number(r.day) : null;
+  const build = (yy) => {
+    const last = lastDayOfMonth(yy, m);
+    const dd = (dayWanted && dayWanted >= 1 && dayWanted <= last) ? dayWanted : last;
+    return `${yy}-${pad(m)}-${pad(dd)}`;
+  };
+  if (y === null || !(y >= 2000 && y <= 2100)) {
+    y = parseYmd(today).getFullYear();
+    if (diffDays(today, build(y)) < -31) y++;
+  }
+  const precision = (dayWanted && dayWanted >= 1 && dayWanted <= lastDayOfMonth(y, m)) ? 'day' : 'month';
+  return { expiry: build(y), precision };
+}
+
+// ノートのページ：soon = 3日以内（期限切れ含む），week = 4〜7日，later = それ以降・期限なし
+function bucketOf(item, today) {
+  if (!item.expiry) return 'later';
+  const d = diffDays(today, item.expiry);
+  if (d <= 3) return 'soon';
+  if (d <= 7) return 'week';
+  return 'later';
+}
+
+const round = (v, k = 2) => Math.round(v * 10 ** k) / 10 ** k;
+
+// 裏面の栄養成分表示を「パッケージ全体」と「1個あたり」に換算する
+function computePerUnit(back) {
+  const units = Math.max(1, Math.round(Number(back.units) || 1));
+  const total = Number(back.total_amount) || 0;
+  const basisAmt = Number(back.basis_amount) || 0;
+  let factor = null;
+  let warn = '';
+  switch (back.basis_type) {
+    case 'per_package': factor = 1; break;
+    case 'per_unit': factor = units; break;
+    case 'per_100': factor = total > 0 ? total / 100 : null; break;
+    case 'per_amount': factor = (total > 0 && basisAmt > 0) ? total / basisAmt : null; break;
+  }
+  if (factor === null) { factor = 1; warn = '内容量が読み取れず，表示値をそのままパッケージ全体として扱いました．確認してください．'; }
+  const whole = {}, perUnit = {};
+  for (const n of NUTRI) {
+    const v = Number(back[n.key]);
+    const val = Number.isFinite(v) && v >= 0 ? v : 0;
+    whole[n.key] = round(val * factor);
+    perUnit[n.key] = round(val * factor / units);
+  }
+  return { whole, perUnit, units, warn };
+}
+
+function sortEvents(evs) {
+  return evs.slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+// 消費記録を日別に割り振る．1個目は追加日〜食べた日，2個目以降は「前の個を食べた（捨てた）翌日〜その個を食べた日」．
+// 捨てた個は順番を進めるだけでカロリーには入れない．複数人で食べた場合は均等に按分．
+function allocate(items, events) {
+  const byItem = new Map();
+  for (const e of events) {
+    if (!byItem.has(e.itemId)) byItem.set(e.itemId, []);
+    byItem.get(e.itemId).push(e);
+  }
+  const out = [];
+  for (const it of items) {
+    let prev = null;
+    for (const e of sortEvents(byItem.get(it.id) || [])) {
+      for (let k = 0; k < e.units; k++) {
+        let start = prev === null ? it.addedAt : (prev < e.date ? addDays(prev, 1) : e.date);
+        if (start > e.date) start = e.date;
+        prev = e.date;
+        if (e.action !== 'eat') continue;
+        const n = diffDays(start, e.date) + 1;
+        const people = (e.people && e.people.length) ? e.people : ['自分'];
+        const share = 1 / (n * people.length);
+        for (let i = 0; i < n; i++) {
+          const date = addDays(start, i);
+          for (const p of people) {
+            const values = {};
+            for (const nk of NUTRI) values[nk.key] = (Number(it.nutri && it.nutri[nk.key]) || 0) * share;
+            out.push({ date, person: p, itemId: it.id, name: it.name, mid: it.mid, values });
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// 期間 [from, to] の日別集計
+function summarize(items, events, from, to, person, key) {
+  const allocs = allocate(items, events);
+  const n = diffDays(from, to) + 1;
+  const days = Array.from({ length: n }, (_, i) => addDays(from, i));
+  const idx = new Map(days.map((d, i) => [d, i]));
+  const values = new Array(n).fill(0);
+  const contrib = days.map(() => new Map());
+  const byMid = new Map();
+  for (const a of allocs) {
+    if (!idx.has(a.date)) continue;
+    if (person !== '全員' && a.person !== person) continue;
+    const i = idx.get(a.date);
+    const v = a.values[key];
+    values[i] += v;
+    contrib[i].set(a.name, (contrib[i].get(a.name) || 0) + v);
+    byMid.set(a.mid, (byMid.get(a.mid) || 0) + v);
+  }
+  const itemById = new Map(items.map(it => [it.id, it]));
+  let eaten = 0, discarded = 0, loss = 0;
+  for (const e of events) {
+    if (e.date < from || e.date > to) continue;
+    if (e.action === 'eat') {
+      if (person === '全員') eaten += e.units;
+      else if ((e.people || ['自分']).includes(person)) eaten += e.units / (e.people || ['自分']).length;
+    } else {
+      discarded += e.units;
+      const it = itemById.get(e.itemId);
+      if (it && it.price > 0 && it.units > 0) loss += it.price * e.units / it.units;
+    }
+  }
+  const total = values.reduce((s, v) => s + v, 0);
+  return { days, values, total, avg: total / n, contrib, byMid, eaten, discarded, loss: Math.round(loss) };
+}
+
+function normName(s) { return String(s || '').normalize('NFKC').replace(/[\s　・･\-－ー]/g, '').toLowerCase(); }
+function findProduct(products, jan, name, maker) {
+  const j = String(jan || '').replace(/\D/g, '');
+  if (j.length >= 8) {
+    const hit = products.find(p => p.jan && p.jan === j);
+    if (hit) return hit;
+  }
+  const nn = normName(name);
+  if (!nn) return null;
+  return products.find(p => normName(p.name) === nn && (!maker || !p.maker || normName(p.maker) === normName(maker))) || null;
+}
+/* CORE-END */
+
+/* ---------- 保存（IndexedDB / localStorage） ---------- */
+const LS = 'oyatsu.';
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(LS + k); localStorage.setItem(LS + k, v); } catch (e) { return null; } };
+const S = {
+  apiKey: ls('apiKey') || '',
+  model: ls('model') || DEFAULT_MODEL,
+  people: (() => { try { const p = JSON.parse(ls('people') || '[]'); return p.length ? p : ['自分']; } catch (e) { return ['自分']; } })(),
+  lastPeople: (() => { try { return JSON.parse(ls('lastPeople') || '[]'); } catch (e) { return []; } })(),
+  theme: ls('theme') || 'auto',
+  models: (() => { try { return JSON.parse(ls('models') || '[]'); } catch (e) { return []; } })(),
+};
+let DB;
+const data = { products: [], items: [], events: [] };
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('oyatsu-note', 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      db.createObjectStore('products', { keyPath: 'id' });
+      db.createObjectStore('items', { keyPath: 'id' }).createIndex('productId', 'productId');
+      db.createObjectStore('events', { keyPath: 'id' }).createIndex('itemId', 'itemId');
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+function tx(store, mode, fn) {
+  return new Promise((res, rej) => {
+    const t = DB.transaction(store, mode);
+    const r = fn(t.objectStore(store));
+    t.oncomplete = () => res(r && r.result);
+    t.onerror = () => rej(t.error);
+  });
+}
+const dbAll = (s) => tx(s, 'readonly', st => st.getAll());
+const dbPut = (s, v) => tx(s, 'readwrite', st => st.put(v));
+const dbDel = (s, id) => tx(s, 'readwrite', st => st.delete(id));
+const dbClear = (s) => tx(s, 'readwrite', st => st.clear());
+async function save(store, obj) {
+  await dbPut(store, obj);
+  const arr = data[store];
+  const i = arr.findIndex(x => x.id === obj.id);
+  if (i >= 0) arr[i] = obj; else arr.push(obj);
+}
+async function remove(store, id) {
+  await dbDel(store, id);
+  data[store] = data[store].filter(x => x.id !== id);
+}
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const today = () => ymd(new Date());
+
+/* ---------- 共通 ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (v, d = 0) => (Number(v) || 0).toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d });
+const md = (s) => { const d = parseYmd(s); return `${d.getMonth() + 1}/${d.getDate()}`; };
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+let ui = { tab: 'add', notePage: 'soon', doneOpen: ls('doneOpen') !== '0', stats: { range: 7, person: '全員', key: 'kcal', sel: null } };
+let wiz = null;
+
+function toast(msg, action) {
+  const old = $('.toast'); if (old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `<span>${esc(msg)}</span>` + (action ? `<button>${esc(action.label)}</button>` : '');
+  if (action) el.querySelector('button').onclick = () => { el.remove(); action.fn(); };
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), action ? 6000 : 3000);
+}
+
+function applyTheme() {
+  if (S.theme === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', S.theme);
+}
+
+/* ---------- 画像 ---------- */
+function loadImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('画像を読み込めませんでした')); };
+    img.src = url;
+  });
+}
+function drawScaled(img, max, q) {
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const s = Math.min(1, max / Math.max(w, h));
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * s); c.height = Math.round(h * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', q);
+}
+async function prepImage(file) {
+  const img = await loadImage(file);
+  return { b64: drawScaled(img, 1280, 0.85).split(',')[1], thumb: drawScaled(img, 240, 0.8) };
+}
+let pickHandler = null;
+function pick(multiple, camera, handler) {
+  pickHandler = handler;
+  const el = camera ? $('#fileCam') : $('#fileLib');
+  el.multiple = !!multiple && !camera;
+  el.value = '';
+  el.click();
+}
+for (const id of ['fileCam', 'fileLib']) {
+  document.getElementById(id).addEventListener('change', (e) => {
+    const files = [...e.target.files];
+    if (files.length && pickHandler) pickHandler(files);
+  });
+}
+
+/* ---------- Gemini ---------- */
+function parseJsonLoose(t) {
+  const s = t.replace(/^```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+  try { return JSON.parse(s); } catch (e) {
+    const m = s.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+    throw new Error('Geminiの応答をJSONとして読めませんでした');
+  }
+}
+function apiMsg(body) { try { return JSON.parse(body).error.message; } catch (e) { return body.slice(0, 200); } }
+async function callGemini(parts, schema) {
+  if (!S.apiKey) throw new Error('右上の ⚙️（設定）で Gemini API キーを保存してください．');
+  const model = (S.model || DEFAULT_MODEL).replace(/^models\//, '');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(S.apiKey)}`;
+  let withSchema = true;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const body = {
+      contents: [{ role: 'user', parts: withSchema ? parts : [...parts, { text: '\n出力は次のJSONスキーマに従うJSONのみとすること:\n' + JSON.stringify(schema) }] }],
+      generationConfig: Object.assign({ temperature: 0.1, responseMimeType: 'application/json' }, withSchema ? { responseSchema: schema } : {}),
+    };
+    let res;
+    try { res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
+    catch (e) { throw new Error('通信に失敗しました．ネットワークを確認してください．'); }
+    if (res.ok) {
+      const j = await res.json();
+      const txt = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(p => p.text || '').join('');
+      if (!txt) throw new Error('Geminiから結果が返りませんでした' + (j.promptFeedback && j.promptFeedback.blockReason ? `（${j.promptFeedback.blockReason}）` : '') + '．');
+      return parseJsonLoose(txt);
+    }
+    const text = await res.text();
+    if (res.status === 400 && withSchema && /schema/i.test(text)) { withSchema = false; continue; }
+    if ([429, 500, 503].includes(res.status) && attempt < 2) { await sleep(1500 * (attempt + 1)); continue; }
+    throw new Error(`Gemini API エラー ${res.status}：${apiMsg(text)}` + ([429, 503].includes(res.status) ? '\n混雑している可能性があります．右上の ⚙️（設定）で別のモデルを選ぶと通る場合があります．' : ''));
+  }
+}
+const img = (b64) => ({ inline_data: { mime_type: 'image/jpeg', data: b64 } });
+
+const FRONT_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    is_food: { type: 'BOOLEAN' },
+    name: { type: 'STRING' },
+    maker: { type: 'STRING' },
+    mid: { type: 'STRING', enum: MID_NAMES },
+    small: { type: 'STRING', enum: ALL_SMALLS },
+    jan: { type: 'STRING' },
+    units_hint: { type: 'INTEGER' },
+  },
+  required: ['is_food', 'name', 'maker', 'mid', 'small', 'jan', 'units_hint'],
+};
+function frontPrompt() {
+  const cats = MID_NAMES.map(m => `- ${m}：${MIDS[m].join('／')}`).join('\n');
+  return `これは日本で売られている商品パッケージの表面の写真です．お菓子・飲み物を想定しています．
+次を読み取ってください．
+- is_food：食べ物・飲み物なら true
+- name：パッケージ表記どおりの商品名．味・フレーバー・容量違いを区別できるよう，それらも含める（例：「ポテトチップス うすしお味 60g」）
+- maker：メーカー名．読めなければ空文字
+- mid と small：次の分類表から選ぶ．small は必ず選んだ mid の行にあるものにする
+${cats}
+- jan：バーコード下の数字（8桁か13桁）が写っていればその数字，なければ空文字
+- units_hint：「6個入」「3袋」など入数の表記があればその数，なければ 0`;
+}
+
+const BACK_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    jan: { type: 'STRING' },
+    content_text: { type: 'STRING' },
+    total_amount: { type: 'NUMBER' },
+    total_unit: { type: 'STRING', enum: ['g', 'ml', '不明'] },
+    units: { type: 'INTEGER' },
+    basis_text: { type: 'STRING' },
+    basis_type: { type: 'STRING', enum: ['per_package', 'per_unit', 'per_100', 'per_amount'] },
+    basis_amount: { type: 'NUMBER' },
+    kcal: { type: 'NUMBER', nullable: true },
+    protein: { type: 'NUMBER', nullable: true },
+    fat: { type: 'NUMBER', nullable: true },
+    carbs: { type: 'NUMBER', nullable: true },
+    salt: { type: 'NUMBER', nullable: true },
+    expiry_kind: { type: 'STRING', enum: ['賞味', '消費', 'なし', '不明'] },
+    exp_found: { type: 'BOOLEAN' },
+    exp_raw: { type: 'STRING' },
+    exp_year: { type: 'INTEGER', nullable: true },
+    exp_month: { type: 'INTEGER', nullable: true },
+    exp_day: { type: 'INTEGER', nullable: true },
+    exp_precision: { type: 'STRING', enum: ['day', 'month', 'none'] },
+  },
+  required: ['jan', 'content_text', 'total_amount', 'total_unit', 'units', 'basis_text', 'basis_type', 'basis_amount', 'kcal', 'protein', 'fat', 'carbs', 'salt', 'expiry_kind', 'exp_found', 'exp_raw', 'exp_year', 'exp_month', 'exp_day', 'exp_precision'],
+};
+const BACK_PROMPT = `これは食品パッケージの裏面・側面の写真です（一括表示欄と栄養成分表示）．次を読み取ってください．
+- jan：バーコード下の数字（8桁か13桁）．なければ空文字
+- content_text：内容量の表記そのまま（例：「60g」「6個（1個標準12g）」）
+- total_amount：パッケージ全体の内容量の数値（g または ml）．個数表記だけで重さが不明なら，1個の重さ×個数で求め，それも無理なら 0
+- total_unit：total_amount の単位
+- units：個包装・本数などパッケージに入っている個数．単品なら 1
+- basis_text：栄養成分表示の基準の表記そのまま（例：「1袋（60g）当たり」「100g当たり」）
+- basis_type：基準の種類
+  - per_package：パッケージ全体あたり（1袋・1本・1箱などで，それがパッケージ全体のとき）
+  - per_unit：中に複数入っている個包装1個あたり
+  - per_100：100g あたり，または 100ml あたり
+  - per_amount：「1食（30g）あたり」のように，全体ではない特定量あたり
+- basis_amount：per_amount のときのその量（g/ml）．それ以外は 0
+- kcal, protein, fat, carbs, salt：基準量あたりのエネルギー(kcal)，たんぱく質(g)，脂質(g)，炭水化物(g)，食塩相当量(g)
+  - 炭水化物が無く糖質と食物繊維だけなら合計する
+  - 食塩相当量が無くナトリウム(mg)だけなら ナトリウム×2.54÷1000 で g にする
+  - 表示が無い項目は null
+- expiry_kind：一括表示の期限欄が「賞味期限」なら 賞味，「消費期限」なら 消費，期限の表示を省略している（欄が無い）なら なし，読めなければ 不明
+- exp_*：写真のどこかに期限の日付そのもの（例「26.10.15」「2026.10」）が印字されていれば読み取る
+  - 「枠外下部に記載」のような場所の案内だけで日付が写っていなければ exp_found=false
+  - ロット番号，製造所固有記号，時刻は無視する．年は下2桁でもよい
+  - 年月日なら exp_precision=day，年月だけなら month（exp_day=null），見つからなければ none
+  - exp_raw：読み取った日付部分の文字列そのまま（無ければ空文字）`;
+
+const EXP_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    found: { type: 'BOOLEAN' },
+    raw_text: { type: 'STRING' },
+    year: { type: 'INTEGER', nullable: true },
+    month: { type: 'INTEGER', nullable: true },
+    day: { type: 'INTEGER', nullable: true },
+    precision: { type: 'STRING', enum: ['day', 'month', 'none'] },
+    kind: { type: 'STRING', enum: ['賞味', '消費', '不明'] },
+  },
+  required: ['found', 'raw_text', 'year', 'month', 'day', 'precision', 'kind'],
+};
+function expPrompt() {
+  return `これは食品パッケージの側面・底面・キャップなどに印字された期限表示の写真です．今日は ${today()} です．
+- 印字（ドット印字・刻印を含む）から期限の年月日を読み取る
+- ロット番号，製造所固有記号，時刻，英字の記号は無視する
+- 「26.10.20」「2026.10.20」「261020」「26.10」などの形式がある．年は下2桁でもよい（year にはその数をそのまま入れる）
+- 年月だけなら precision=month，day=null．年月日なら precision=day
+- 期限が見つからなければ found=false，precision=none
+- raw_text：読み取った期限部分の文字列そのまま
+- kind：近くに「賞味期限」「消費期限」の表記があればそれ，無ければ 不明`;
+}
+
+/* ---------- タブ切り替え ---------- */
+function setTab(t) {
+  ui.tab = t;
+  document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.tab === t ? 'page' : 'false'));
+  $('#gearBtn').setAttribute('aria-pressed', t === 'settings');
+  render();
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+let tabBeforeSettings = 'add';
+$('#gearBtn').addEventListener('click', () => {
+  if (ui.tab === 'settings') setTab(tabBeforeSettings);
+  else { tabBeforeSettings = ui.tab; setTab('settings'); }
+});
+function render() {
+  const m = $('#main');
+  if (ui.tab === 'add') m.innerHTML = renderAdd();
+  else if (ui.tab === 'note') m.innerHTML = renderNote();
+  else if (ui.tab === 'stats') { m.innerHTML = renderStats(); drawChart(); }
+  else m.innerHTML = renderSettings();
+}
+
+/* ---------- 追加タブ ---------- */
+function stepChips(cur) {
+  const steps = [['front', '① 表面'], ['back', '② 裏面'], ['expiry', '③ 期限'], ['confirm', '④ 確認']];
+  const order = steps.map(s => s[0]);
+  const ci = order.indexOf(cur);
+  return `<div class="steps">${steps.map(([k, l], i) => `<span class="${i === ci ? 'on' : i < ci ? 'done' : ''}">${l}</span>`).join('')}</div>`;
+}
+function prodCard(p) {
+  return `<div class="prod">${p.thumb ? `<img class="thumb" src="${p.thumb}" alt="">` : '<div class="thumb"></div>'}
+    <div><div class="t">${esc(p.name || '（商品名未取得）')}</div>
+    <div class="small muted">${esc(p.maker || '')}</div>
+    <div><span class="chip">食品</span><span class="chip">${esc(p.mid || '')}</span><span class="chip">${esc(p.small || '')}</span></div></div></div>`;
+}
+function capButtons(act, label, multiple) {
+  return `<button class="btn primary big block" data-act="${act}" data-cam="1">📷 ${label}</button>
+    <div style="text-align:center"><button class="btn link" data-act="${act}" data-cam="0">写真から選ぶ${multiple ? '（複数可）' : ''}</button></div>`;
+}
+function quickListHtml() {
+  const q = (ui.quickQ || '').trim();
+  const list = data.products.slice().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0))
+    .filter(p => !q || normName(p.name).includes(normName(q))).slice(0, 30);
+  return list.map(p => `<button data-act="usep" data-id="${p.id}">${p.thumb ? `<img class="thumb sm" src="${p.thumb}" alt="">` : '<div class="thumb sm"></div>'}
+    <div style="min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="small muted">${esc(p.mid)} / ${esc(p.small)}・${fmt(p.nutri && p.nutri.kcal)}kcal/個</div></div></button>`).join('') || '<p class="muted small">該当なし</p>';
+}
+function renderAdd() {
+  if (!wiz) {
+    return `${!S.apiKey ? '<div class="note-box">最初に右上の ⚙️（設定）で Gemini API キーを保存してください．</div>' : ''}
+    <div class="card">${stepChips('front')}
+      <h2>商品の表面を撮影</h2>
+      <p class="small muted" style="margin-top:0">パッケージ正面から商品名と分類を読み取ります．登録済みの商品なら，次は期限の撮影だけで済みます．</p>
+      ${capButtons('front', '表面を撮影')}
+    </div>
+    ${data.products.length ? `<div class="card"><h2>よく買う商品から追加</h2>
+      <div class="field"><input id="quickQ" placeholder="商品名で絞り込み" value="${esc(ui.quickQ || '')}"></div>
+      <div class="quicklist" id="quickList">${quickListHtml()}</div></div>` : ''}`;
+  }
+  const err = wiz.error ? `<div class="err">${esc(wiz.error)}</div>` : '';
+  if (wiz.step === 'busy') {
+    return `<div class="card">${stepChips(wiz.busyStep)}<div class="busy"><div class="spinner"></div><div>${esc(wiz.msg)}</div></div></div>`;
+  }
+  const cancel = `<div style="text-align:center;margin-top:4px"><button class="btn link" data-act="cancel">最初からやり直す</button></div>`;
+  if (wiz.step === 'front') {
+    return `${err}<div class="card">${stepChips('front')}<h2>商品の表面を撮影</h2>${capButtons('front', '表面を撮影')}</div>${cancel}`;
+  }
+  if (wiz.step === 'match') {
+    return `${err}<div class="card">${stepChips('front')}
+      <h2>登録済みの商品が見つかりました</h2>
+      ${prodCard(wiz.match)}
+      <p class="small muted">同じ商品なら，裏面の撮影を省略して期限の撮影に進みます．</p>
+      <div class="btnrow"><button class="btn primary" data-act="usematch">この商品で続ける</button>
+      <button class="btn" data-act="newprod">別の商品として登録</button></div></div>${cancel}`;
+  }
+  if (wiz.step === 'back') {
+    return `${err}<div class="card">${stepChips('back')}
+      ${prodCard({ ...wiz.front, thumb: wiz.thumb })}
+      ${wiz.front.is_food === false ? '<div class="note-box">食べ物・飲み物ではない可能性があります．第1版はお菓子・飲み物のみ対応しています．</div>' : ''}
+      <h2 style="margin-top:14px">裏面を撮影</h2>
+      <p class="small muted" style="margin-top:0">一括表示欄と栄養成分表示が写るように撮影します．別々なら「写真から選ぶ」で複数枚を選べます．</p>
+      ${capButtons('back', '裏面を撮影', true)}
+      <div class="btnrow"><button class="btn" data-act="skipback">裏面を省略（栄養は手入力）</button></div></div>${cancel}`;
+  }
+  if (wiz.step === 'expiry') {
+    const kindHint = wiz.back && ['賞味', '消費'].includes(wiz.back.expiry_kind) ? `裏面の表示：<b>${wiz.back.expiry_kind}期限</b>` : '';
+    const be = backExpiry();
+    const skipBox = be
+      ? `<div class="note-box" style="color:var(--ink);background:var(--accent-soft)">裏面の写真に期限が写っていました：<b>「${esc(be.raw)}」→ ${be.precision === 'month' ? `${parseYmd(be.expiry).getFullYear()}年${parseYmd(be.expiry).getMonth() + 1}月末` : esc(be.expiry.replace(/-/g, '/'))}</b>
+          <button class="btn primary block" data-act="expskip" style="margin-top:8px">この期限で進む（撮影をスキップ）</button></div>`
+      : '';
+    return `${err}<div class="card">${stepChips('expiry')}
+      ${prodCard(wiz.product ? wiz.product : { ...wiz.front, thumb: wiz.thumb })}
+      <h2 style="margin-top:14px">期限の印字を撮影</h2>
+      ${skipBox}
+      <p class="small muted" style="margin-top:0">側面・底面・キャップなどの期限日付を大きく写します．${kindHint}</p>
+      ${capButtons('expiry', be ? '別の場所の期限を撮影' : '期限を撮影')}
+      <div class="btnrow"><button class="btn" data-act="expnone">期限表示なし</button><button class="btn" data-act="expmanual">${be ? '手入力する' : 'スキップ（確認画面で入力）'}</button></div></div>${cancel}`;
+  }
+  if (wiz.step === 'confirm') return err + renderConfirm() + cancel;
+  return '';
+}
+
+// 裏面の写真から読めた期限（無ければ null）
+function backExpiry() {
+  const b = wiz && wiz.back;
+  if (!b || !b.exp_found || b.exp_precision === 'none' || !b.exp_month) return null;
+  const n = normalizeExpiry({ year: b.exp_year, month: b.exp_month, day: b.exp_day, precision: b.exp_precision }, today());
+  if (!n.expiry) return null;
+  return { ...n, raw: b.exp_raw || '', kind: ['賞味', '消費'].includes(b.expiry_kind) ? b.expiry_kind : '不明' };
+}
+function buildForm() {
+  const p = wiz.product;
+  const f = wiz.front || {};
+  const b = wiz.back;
+  const conv = b ? computePerUnit(b) : null;
+  const e = wiz.expiry || { expiry: null, precision: 'none' };
+  const jan = String((b && b.jan) || f.jan || (p && p.jan) || '').replace(/\D/g, '');
+  const units = conv ? conv.units : (f.units_hint > 0 ? f.units_hint : (p ? p.units : 1));
+  let kind = (e.kind && ['賞味', '消費'].includes(e.kind)) ? e.kind
+    : (b && ['賞味', '消費'].includes(b.expiry_kind)) ? b.expiry_kind
+    : (p && p.expiryKind && p.expiryKind !== 'なし') ? p.expiryKind : '賞味';
+  if (e.precision === 'none' && !e.manual) kind = 'なし';
+  const cat = fixCategory(p ? p.mid : f.mid, p ? p.small : f.small);
+  return {
+    name: p ? p.name : (f.name || ''),
+    maker: p ? p.maker : (f.maker || ''),
+    mid: cat.mid, small: cat.small, jan,
+    units,
+    packs: 1,
+    nutri: conv ? conv.perUnit : (p ? { ...p.nutri } : { kcal: 0, protein: 0, fat: 0, carbs: 0, salt: 0 }),
+    basisText: b ? `${b.basis_text}（内容量 ${b.content_text}）` : (p ? p.basisText || '' : ''),
+    convWarn: conv ? conv.warn : (!p ? '裏面を省略したため，栄養成分は手入力してください．' : ''),
+    kind,
+    expiry: e.expiry || '',
+    precision: e.precision,
+    raw: e.raw || '',
+    price: '',
+    addedAt: today(),
+  };
+}
+function renderConfirm() {
+  const f = wiz.form;
+  const midOpts = MID_NAMES.map(m => `<option ${m === f.mid ? 'selected' : ''}>${esc(m)}</option>`).join('');
+  const smallOpts = MIDS[f.mid].map(s => `<option ${s === f.small ? 'selected' : ''}>${esc(s)}</option>`).join('');
+  const days = f.expiry ? diffDays(today(), f.expiry) : null;
+  return `<div class="card">${stepChips('confirm')}
+    <h2>内容を確認して登録</h2>
+    ${wiz.thumb || (wiz.product && wiz.product.thumb) ? `<img class="thumb" src="${wiz.thumb || wiz.product.thumb}" alt="" style="width:72px;height:72px;margin-bottom:8px">` : ''}
+    <div class="field"><label>商品名</label><input data-f="name" value="${esc(f.name)}"></div>
+    <div class="grid2">
+      <div class="field"><label>メーカー</label><input data-f="maker" value="${esc(f.maker)}"></div>
+      <div class="field"><label>JAN</label><input data-f="jan" inputmode="numeric" value="${esc(f.jan)}"></div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label>大分類</label><input value="食品" disabled></div>
+      <div class="field"><label>中分類</label><select data-f="mid" data-rerender="1">${midOpts}</select></div>
+      <div class="field"><label>小分類</label><select data-f="small">${smallOpts}</select></div>
+    </div>
+
+    <h3>期限</h3>
+    ${f.raw ? `<p class="small muted" style="margin:0 0 6px">読み取り：「${esc(f.raw)}」${f.precision === 'month' ? '→ 年月表示のため月末として扱います' : ''}</p>` : ''}
+    <div class="grid2">
+      <div class="field"><label>種類</label><select data-f="kind" data-rerender="1">${['賞味', '消費', 'なし'].map(k => `<option value="${k}" ${k === f.kind ? 'selected' : ''}>${k === 'なし' ? '期限表示なし' : k + '期限'}</option>`).join('')}</select></div>
+      <div class="field"><label>期限日${days !== null ? `（${days >= 0 ? 'あと' + days + '日' : Math.abs(days) + '日経過'}）` : ''}</label><input type="date" data-f="expiry" data-rerender="1" value="${esc(f.expiry)}" ${f.kind === 'なし' ? 'disabled' : ''}></div>
+    </div>
+    ${days !== null && days < 0 ? '<div class="note-box">期限がすでに過ぎています．読み取り誤りでないか確認してください．</div>' : ''}
+    ${days !== null && days > 730 ? '<div class="note-box">期限が2年以上先です．年の読み取り誤りでないか確認してください．</div>' : ''}
+
+    <h3>個数・価格</h3>
+    <div class="grid3">
+      <div class="field"><label>入数</label><input type="number" min="1" data-f="units" data-rerender="1" value="${f.units}"></div>
+      <div class="field"><label>パッケージ数</label><input type="number" min="1" data-f="packs" data-rerender="1" value="${f.packs}"></div>
+      <div class="field"><label>支払額（円）</label><input type="number" min="0" data-f="price" value="${esc(f.price)}"></div>
+    </div>
+    <p class="small muted" style="margin:-4px 0 0">入数は1パッケージあたり，支払額は任意（食品ロス金額の計算用）．ノートで管理する個数：<b>${(Number(f.units) || 1) * (Number(f.packs) || 1)}個</b></p>
+
+    <h3>栄養成分（1個あたり）</h3>
+    ${f.basisText ? `<p class="small muted" style="margin:0 0 6px">表示：${esc(f.basisText)}</p>` : ''}
+    ${f.convWarn ? `<div class="note-box">${esc(f.convWarn)}</div>` : ''}
+    <div class="grid3">${NUTRI.map(n => `<div class="field"><label>${n.label}（${n.unit}）</label><input type="number" step="any" min="0" data-f="n_${n.key}" data-rerender="1" value="${f.nutri[n.key]}"></div>`).join('')}</div>
+    <p class="small muted" style="margin:-4px 0 0">パッケージ全体：${fmt((Number(f.nutri.kcal) || 0) * (Number(f.units) || 1))} kcal</p>
+
+    <div class="field" style="margin-top:10px"><label>追加日</label><input type="date" data-f="addedAt" value="${esc(f.addedAt)}" max="${today()}"></div>
+    <button class="btn primary block big" data-act="register">登録する</button>
+  </div>`;
+}
+function readForm() {
+  const f = wiz.form;
+  document.querySelectorAll('[data-f]').forEach(el => {
+    const k = el.dataset.f;
+    if (k.startsWith('n_')) f.nutri[k.slice(2)] = el.value === '' ? 0 : Number(el.value);
+    else f[k] = el.value;
+  });
+  const cat = fixCategory(f.mid, f.small);
+  f.mid = cat.mid; f.small = cat.small;
+}
+
+async function step(busyStep, msg, fn) {
+  const back = { ...wiz };
+  wiz = { ...wiz, step: 'busy', busyStep, msg, error: null };
+  render();
+  try { await fn(); }
+  catch (e) { wiz = { ...back, error: e.message || String(e) }; }
+  render();
+}
+function onFront(files) {
+  wiz = wiz || { step: 'front' };
+  step('front', '表面を解析しています…', async () => {
+    const im = await prepImage(files[0]);
+    const r = await callGemini([{ text: frontPrompt() }, img(im.b64)], FRONT_SCHEMA);
+    const cat = fixCategory(r.mid, r.small);
+    const front = { ...r, ...cat };
+    const match = findProduct(data.products, r.jan, r.name, r.maker);
+    wiz = { step: match ? 'match' : 'back', thumb: im.thumb, front, match, product: null };
+  });
+}
+function onBack(files) {
+  step('back', `裏面を解析しています…（${files.length}枚）`, async () => {
+    const ims = [];
+    for (const f of files.slice(0, 4)) ims.push(await prepImage(f));
+    const r = await callGemini([{ text: BACK_PROMPT }, ...ims.map(i => img(i.b64))], BACK_SCHEMA);
+    wiz.back = r;
+    if (r.expiry_kind === 'なし') {
+      wiz.expiry = { expiry: null, precision: 'none' };
+      wiz.form = buildForm();
+      wiz.step = 'confirm';
+    } else wiz.step = 'expiry';
+  });
+}
+function onExpiry(files) {
+  step('expiry', '期限を読み取っています…', async () => {
+    const im = await prepImage(files[0]);
+    const r = await callGemini([{ text: expPrompt() }, img(im.b64)], EXP_SCHEMA);
+    if (!r.found || r.precision === 'none') {
+      wiz.step = 'expiry';
+      wiz.error = '期限を読み取れませんでした．日付が大きく写るように撮り直すか，手入力してください．';
+      return;
+    }
+    const n = normalizeExpiry(r, today());
+    wiz.expiry = { ...n, raw: r.raw_text, kind: r.kind };
+    wiz.form = buildForm();
+    wiz.step = 'confirm';
+  });
+}
+async function register() {
+  readForm();
+  const f = wiz.form;
+  if (!f.name.trim()) { wiz.error = '商品名を入力してください．'; render(); return; }
+  if (f.kind !== 'なし' && !f.expiry) { wiz.error = '期限日を入力するか，種類を「期限表示なし」にしてください．'; render(); return; }
+  const units = Math.max(1, Math.round(Number(f.units) || 1));
+  const total = units * Math.max(1, Math.round(Number(f.packs) || 1));
+  const nutri = {};
+  for (const n of NUTRI) nutri[n.key] = Math.max(0, Number(f.nutri[n.key]) || 0);
+  const now = Date.now();
+  const base = wiz.product || {};
+  const product = {
+    ...base,
+    id: base.id || uid(),
+    jan: f.jan.replace(/\D/g, ''),
+    name: f.name.trim(), maker: f.maker.trim(),
+    mid: f.mid, small: f.small,
+    units, nutri, basisText: f.basisText,
+    expiryKind: f.kind,
+    thumb: wiz.thumb || base.thumb || '',
+    createdAt: base.createdAt || now, updatedAt: now, lastUsed: now,
+  };
+  const precision = f.kind === 'なし' ? 'none' : (f.expiry === wiz.expiry?.expiry ? (wiz.expiry.precision === 'month' ? 'month' : 'day') : 'day');
+  const item = {
+    id: uid(), productId: product.id,
+    name: product.name, mid: product.mid, small: product.small,
+    nutri, units: total, left: total,
+    expiry: f.kind === 'なし' ? null : f.expiry, precision, expiryKind: f.kind,
+    price: f.price === '' ? null : Math.max(0, Number(f.price) || 0),
+    addedAt: f.addedAt || today(), status: 'active', createdAt: now,
+  };
+  await save('products', product);
+  await save('items', item);
+  wiz = null;
+  render();
+  const b = bucketOf(item, today());
+  toast(`「${item.name}」を登録しました（${b === 'soon' ? '3日以内' : b === 'week' ? '4〜7日' : 'それ以降'}のページ）`);
+}
+
+/* ---------- ノートタブ ---------- */
+function expiryText(it) {
+  const t = today();
+  if (!it.expiry) return { text: '期限表示なし', cls: '' };
+  const d = diffDays(t, it.expiry);
+  const date = it.precision === 'month' ? `${parseYmd(it.expiry).getMonth() + 1}月末` : md(it.expiry);
+  if (d < 0) return { text: `${date}（${-d}日経過）`, cls: 'exp-late', late: true };
+  if (d === 0) return { text: `${date}（今日まで）`, cls: 'exp-soon' };
+  return { text: `${date}（あと${d}日）`, cls: d <= 3 ? 'exp-soon' : d <= 7 ? 'exp-week' : '' };
+}
+function renderNote() {
+  const t = today();
+  const active = data.items.filter(i => i.status === 'active');
+  const groups = { soon: [], week: [], later: [] };
+  for (const it of active) groups[bucketOf(it, t)].push(it);
+  for (const k in groups) groups[k].sort((a, b) => (a.expiry || '9999') < (b.expiry || '9999') ? -1 : (a.expiry || '9999') > (b.expiry || '9999') ? 1 : a.createdAt - b.createdAt);
+  const pages = [['soon', '3日以内'], ['week', '4〜7日'], ['later', 'それ以降']];
+  const titles = { soon: '期限が3日以内の商品（期限切れを含む）', week: '期限が4〜7日後の商品', later: '期限が8日以上先，または期限表示なしの商品' };
+  const cur = ui.notePage;
+  const rows = groups[cur].map(it => {
+    const e = expiryText(it);
+    const thumb = (data.products.find(p => p.id === it.productId) || {}).thumb;
+    const kindMark = it.expiryKind === '消費' ? '<span class="kind">消</span>' : it.expiryKind === '賞味' ? '<span class="kind">賞</span>' : '';
+    return `<div class="nrow ${e.late ? 'late' : ''}">
+      <button class="ck" data-act="consume" data-id="${it.id}" aria-label="${esc(it.name)}を消費済みにする"><span></span></button>
+      <button class="body" data-act="detail" data-id="${it.id}">
+        ${thumb ? `<img class="thumb sm" src="${thumb}" alt="">` : ''}
+        <div style="min-width:0"><div class="name">${esc(it.name)}</div><div class="meta ${e.cls}">${e.late ? '⚠ ' : ''}${kindMark}${esc(e.text)}</div></div>
+        <span class="left">残り ${it.left}/${it.units}</span>
+      </button></div>`;
+  }).join('');
+  // 完了済み：チェックした時点で表示されていたページに残す
+  const done = data.items.filter(i => i.status === 'done' && bucketOf(i, doneDate(i)) === cur)
+    .sort((a, b) => doneDate(a) < doneDate(b) ? 1 : doneDate(a) > doneDate(b) ? -1 : (b.createdAt || 0) - (a.createdAt || 0));
+  const doneRows = done.map(it => {
+    const last = sortEvents(data.events.filter(e => e.itemId === it.id)).pop();
+    const thumb = (data.products.find(p => p.id === it.productId) || {}).thumb;
+    const how = last ? `${md(last.date)} ${last.action === 'eat' ? '食べた' : '捨てた'}` : `${md(doneDate(it))} 完了`;
+    return `<div class="nrow done">
+      <button class="ck" data-act="restore" data-id="${it.id}" aria-label="${esc(it.name)}を未完了に戻す"><span></span></button>
+      <button class="body" data-act="detail" data-id="${it.id}">
+        ${thumb ? `<img class="thumb sm" src="${thumb}" alt="">` : ''}
+        <div style="min-width:0"><div class="name">${esc(it.name)}</div><div class="meta muted">${esc(how)}</div></div>
+        <span class="left">全${it.units}個</span>
+      </button></div>`;
+  }).join('');
+  const open = ui.doneOpen !== false;
+  return `<div class="pages" role="tablist">${pages.map(([k, l]) => `<button role="tab" aria-selected="${k === cur}" data-act="page" data-id="${k}">${l}<span class="n">${groups[k].length}</span></button>`).join('')}</div>
+    <div class="paper"><div class="title">${titles[cur]}</div>
+    ${rows || `<div class="empty">${cur === 'soon' ? 'すぐに期限が切れる商品はありません．' : 'このページに商品はありません．'}</div>`}
+    ${done.length ? `<button class="done-head" data-act="toggledone" aria-expanded="${open}"><span class="chev">︿</span>${done.length} 個の完了済みアイテム</button>${open ? doneRows : ''}` : ''}</div>
+    <p class="small muted" style="margin-top:10px">□ をタップすると「食べた／捨てた」を記録します．完了済みの ☑ を外すと，最後の記録を取り消して戻します．</p>`;
+}
+
+// 完了日：記録した日（無ければ最後の消費記録の日，それも無ければ追加日）
+function doneDate(it) {
+  if (it.doneAt) return it.doneAt;
+  const last = sortEvents(data.events.filter(e => e.itemId === it.id)).pop();
+  return last ? last.date : it.addedAt;
+}
+async function restoreItem(id) {
+  const it = data.items.find(i => i.id === id);
+  if (!it) return;
+  const evs = sortEvents(data.events.filter(e => e.itemId === id));
+  const last = evs.pop();
+  const snapItem = { ...it };
+  if (last) await remove('events', last.id);
+  const used = evs.reduce((s, e) => s + e.units, 0);
+  const restored = { ...it, left: Math.max(1, Math.min(it.units, it.units - used)), status: 'active' };
+  delete restored.doneAt;
+  await save('items', restored);
+  render();
+  toast(`未完了に戻しました${last ? `（${md(last.date)}の「${last.action === 'eat' ? '食べた' : '捨てた'}×${last.units}」を取り消し）` : ''}`, {
+    label: '元に戻す',
+    fn: async () => { if (last) await save('events', last); await save('items', snapItem); render(); },
+  });
+}
+let sheetState = null;
+function openSheet(html) { $('#overlay').innerHTML = `<div class="backdrop" data-act="closesheet"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`; }
+function closeSheet() { $('#overlay').innerHTML = ''; sheetState = null; }
+function renderConsumeSheet() {
+  const s = sheetState;
+  const dateEl = $('#sDate');
+  if (dateEl && dateEl.value) s.date = dateEl.value;
+  const it = data.items.find(i => i.id === s.itemId);
+  openSheet(`<h2>${esc(it.name)}</h2>
+    <div class="seg"><button data-act="sact" data-id="eat" aria-pressed="${s.action === 'eat'}">😋 食べた</button><button data-act="sact" data-id="discard" aria-pressed="${s.action === 'discard'}">🗑 捨てた</button></div>
+    <div class="field"><label>個数（残り ${it.left}個）</label><div class="stepper"><button data-act="sdec">−</button><output>${s.units}</output><button data-act="sinc">＋</button>
+      ${it.left > 1 ? `<button class="btn link" data-act="sall">全部</button>` : ''}</div></div>
+    ${s.action === 'eat' ? `<div class="field"><label>食べた人${s.people.length > 1 ? '（均等に按分）' : ''}</label><div class="chips">${S.people.map(p => `<button data-act="sperson" data-id="${esc(p)}" aria-pressed="${s.people.includes(p)}">${esc(p)}</button>`).join('')}</div></div>` : ''}
+    <div class="field"><label>日付</label><input type="date" id="sDate" value="${s.date}" min="${it.addedAt}" max="${today()}"></div>
+    <div class="btnrow"><button class="btn" data-act="closesheet">キャンセル</button><button class="btn primary" data-act="sok">記録する</button></div>`);
+}
+async function commitConsume() {
+  const s = sheetState;
+  const it = data.items.find(i => i.id === s.itemId);
+  let date = $('#sDate').value || today();
+  if (date < it.addedAt) date = it.addedAt;
+  if (date > today()) date = today();
+  if (s.action === 'eat' && !s.people.length) { toast('食べた人を選んでください'); return; }
+  const units = Math.min(it.left, Math.max(1, s.units));
+  const ev = { id: uid(), itemId: it.id, date, action: s.action, units, people: s.action === 'eat' ? s.people.slice() : [], createdAt: Date.now() };
+  await save('events', ev);
+  const left = it.left - units;
+  const next = { ...it, left, status: left <= 0 ? 'done' : 'active' };
+  if (left <= 0) next.doneAt = date; else delete next.doneAt;
+  await save('items', next);
+  if (s.action === 'eat') { S.lastPeople = s.people.slice(); ls('lastPeople', JSON.stringify(S.lastPeople)); }
+  closeSheet();
+  render();
+  toast(`${s.action === 'eat' ? '食べた' : '捨てた'}：${it.name} ×${units}`, { label: '取り消し', fn: () => undoEvent(ev.id) });
+}
+async function undoEvent(id) {
+  const ev = data.events.find(e => e.id === id);
+  if (!ev) return;
+  const it = data.items.find(i => i.id === ev.itemId);
+  await remove('events', id);
+  if (it) { const r = { ...it, left: Math.min(it.units, it.left + ev.units), status: 'active' }; delete r.doneAt; await save('items', r); }
+  render();
+  toast('記録を取り消しました');
+}
+function renderDetailSheet(id) {
+  const it = data.items.find(i => i.id === id);
+  sheetState = { detail: id };
+  openSheet(`<h2>${esc(it.name)}</h2>
+    <p class="small muted" style="margin-top:-6px">食品 / ${esc(it.mid)} / ${esc(it.small)}・追加日 ${esc(it.addedAt)}・1個 ${fmt(it.nutri.kcal)}kcal</p>
+    <div class="grid2">
+      <div class="field"><label>期限の種類</label><select id="dKind">${['賞味', '消費', 'なし'].map(k => `<option value="${k}" ${k === it.expiryKind ? 'selected' : ''}>${k === 'なし' ? '期限表示なし' : k + '期限'}</option>`).join('')}</select></div>
+      <div class="field"><label>期限日</label><input type="date" id="dExp" value="${esc(it.expiry || '')}"></div>
+      <div class="field"><label>残り個数（全${it.units}個）</label><input type="number" id="dLeft" min="0" max="${it.units}" value="${it.left}"></div>
+      <div class="field"><label>支払額（円）</label><input type="number" id="dPrice" min="0" value="${it.price ?? ''}"></div>
+    </div>
+    <p class="small muted">残り個数を手で減らした分は，消費記録（カロリー）には入りません．食べた分は □ から記録してください．</p>
+    <div class="btnrow"><button class="btn danger" data-act="ddel">削除</button><button class="btn" data-act="closesheet">閉じる</button><button class="btn primary" data-act="dsave">保存</button></div>`);
+}
+async function saveDetail() {
+  const it = data.items.find(i => i.id === sheetState.detail);
+  const kind = $('#dKind').value;
+  const exp = $('#dExp').value;
+  if (kind !== 'なし' && !exp) { toast('期限日を入力してください'); return; }
+  const left = Math.max(0, Math.min(it.units, Math.round(Number($('#dLeft').value) || 0)));
+  const price = $('#dPrice').value === '' ? null : Math.max(0, Number($('#dPrice').value) || 0);
+  const changedExp = exp !== (it.expiry || '');
+  const next = { ...it, expiryKind: kind, expiry: kind === 'なし' ? null : exp, precision: kind === 'なし' ? 'none' : (changedExp ? 'day' : it.precision), left, price, status: left <= 0 ? 'done' : 'active' };
+  if (left > 0) delete next.doneAt; else if (it.status !== 'done') next.doneAt = today();
+  await save('items', next);
+  closeSheet(); render(); toast('保存しました');
+}
+async function deleteItem() {
+  const it = data.items.find(i => i.id === sheetState.detail);
+  const evs = data.events.filter(e => e.itemId === it.id);
+  if (!confirm(`「${it.name}」を削除しますか？${evs.length ? `\nこの商品の消費記録 ${evs.length}件も削除され，分析から外れます．` : ''}`)) return;
+  for (const e of evs) await remove('events', e.id);
+  await remove('items', it.id);
+  closeSheet(); render(); toast('削除しました');
+}
+
+/* ---------- 分析タブ ---------- */
+let chartModel = null;
+function renderStats() {
+  const st = ui.stats;
+  const to = today();
+  const from = addDays(to, -(st.range - 1));
+  const nk = NUTRI.find(n => n.key === st.key);
+  const sum = summarize(data.items, data.events, from, to, st.person, st.key);
+  chartModel = { sum, nk };
+  const persons = ['全員', ...S.people];
+  const mids = [...sum.byMid.entries()].sort((a, b) => b[1] - a[1]);
+  const maxMid = mids.length ? mids[0][1] : 0;
+  const sel = st.sel && sum.days.includes(st.sel) ? st.sel : null;
+  const selIdx = sel ? sum.days.indexOf(sel) : -1;
+  const recent = sortEvents(data.events).reverse().slice(0, 20);
+  return `<div class="filters">
+      <div class="seg">${[7, 14, 30].map(r => `<button data-act="range" data-id="${r}" aria-pressed="${st.range === r}">${r}日</button>`).join('')}</div>
+      <div class="seg">${NUTRI.map(n => `<button data-act="nkey" data-id="${n.key}" aria-pressed="${st.key === n.key}" style="font-size:12.5px">${n.key === 'kcal' ? 'カロリー' : n.label.replace('食塩相当量', '食塩')}</button>`).join('')}</div>
+      ${S.people.length > 1 ? `<div class="seg">${persons.map(p => `<button data-act="person" data-id="${esc(p)}" aria-pressed="${st.person === p}">${esc(p)}</button>`).join('')}</div>` : ''}
+    </div>
+    <div class="card">
+      <div class="small muted">${nk.label}の1日平均（${md(from)}〜${md(to)}）</div>
+      <div class="hero">${fmt(sum.avg, nk.digits)}<small>${nk.unit}/日</small></div>
+      <div class="kpis">
+        <div class="kpi"><div class="v">${fmt(sum.total, nk.digits)} ${nk.unit}</div><div class="l">期間合計</div></div>
+        <div class="kpi"><div class="v">${fmt(sum.eaten, Number.isInteger(sum.eaten) ? 0 : 1)} 個</div><div class="l">食べた個数</div></div>
+        <div class="kpi"><div class="v">${fmt(sum.discarded)} 個</div><div class="l">捨てた個数</div></div>
+        <div class="kpi"><div class="v">${fmt(sum.loss)} 円</div><div class="l">食品ロス（価格入力分）</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>日別の${nk.label}</h2>
+      <div class="chart" id="chart"><svg id="chartSvg" role="img" aria-label="日別の${nk.label}の棒グラフ"></svg><div class="tip" id="chartTip"></div></div>
+      <p class="small muted" style="margin:6px 0 0">棒をタップするとその日の内訳を表示します．破線は期間平均．</p>
+      ${sel ? `<h3>${md(sel)}（${WD[parseYmd(sel).getDay()]}）の内訳：${fmt(sum.values[selIdx], nk.digits)} ${nk.unit}</h3>
+        <ul class="list">${[...sum.contrib[selIdx].entries()].sort((a, b) => b[1] - a[1]).map(([n, v]) => `<li>${esc(n)}<span class="r">${fmt(v, nk.digits)} ${nk.unit}</span></li>`).join('') || '<li class="muted">記録なし</li>'}</ul>` : ''}
+      <details style="margin-top:10px"><summary>表で見る</summary>
+        <table class="data"><thead><tr><th>日付</th><th>${nk.label}（${nk.unit}）</th></tr></thead><tbody>
+        ${sum.days.map((d, i) => `<tr><td>${md(d)}（${WD[parseYmd(d).getDay()]}）</td><td>${fmt(sum.values[i], nk.digits)}</td></tr>`).join('')}</tbody></table></details>
+    </div>
+    <div class="card"><h2>中分類別の${nk.label}</h2>
+      ${mids.length ? mids.map(([m, v]) => `<div class="hbar"><span>${esc(m)}</span><div class="track"><div class="fill" style="width:${maxMid ? (v / maxMid * 100).toFixed(1) : 0}%"></div></div><span class="val">${fmt(v, nk.digits)} ${nk.unit}</span></div>`).join('') : '<p class="muted small">この期間の記録はありません．</p>'}
+    </div>
+    <div class="card"><h2>最近の記録</h2>
+      <ul class="list">${recent.map(e => {
+        const it = data.items.find(i => i.id === e.itemId);
+        return `<li><span>${md(e.date)}</span><span style="min-width:0">${e.action === 'eat' ? '😋' : '🗑'} ${esc(it ? it.name : '（削除済み）')} ×${e.units}${e.action === 'eat' && S.people.length > 1 ? ` <span class="muted small">${esc((e.people || []).join('・'))}</span>` : ''}</span><button class="btn link r" data-act="undo" data-id="${e.id}">取り消し</button></li>`;
+      }).join('') || '<li class="muted">まだ記録はありません．</li>'}</ul>
+    </div>
+    <p class="small muted">このアプリで登録した包装食品からの摂取量です．1個目は追加日から食べた日まで，2個目以降は前の個を食べた翌日から食べた日までに均等に割り振っています．捨てた分は含みません．</p>`;
+}
+function drawChart() {
+  const svg = $('#chartSvg');
+  if (!svg || !chartModel) return;
+  const { sum, nk } = chartModel;
+  const W = Math.max(280, $('#chart').clientWidth), H = 200;
+  const padL = 40, padR = 8, padT = 12, padB = 26;
+  const n = sum.days.length;
+  const maxV = Math.max(...sum.values, sum.avg, 0);
+  const niceMax = (() => { if (maxV <= 0) return 1; const p = 10 ** Math.floor(Math.log10(maxV)); for (const k of [1, 2, 2.5, 5, 10]) if (k * p >= maxV) return k * p; return 10 * p; })();
+  const y = (v) => padT + (H - padT - padB) * (1 - v / niceMax);
+  const band = (W - padL - padR) / n;
+  const bw = Math.min(24, band * 0.62);
+  const ticks = [0, .25, .5, .75, 1].map(f => f * niceMax);
+  const labelEvery = n <= 7 ? 1 : n <= 14 ? 2 : 5;
+  let s = '';
+  for (const t of ticks) s += `<line x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/><text x="${padL - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10.5" fill="var(--muted)">${fmt(t, niceMax < 5 ? 1 : 0)}</text>`;
+  sum.days.forEach((d, i) => {
+    const v = sum.values[i];
+    const cx = padL + band * (i + .5);
+    const x = cx - bw / 2, y0 = y(0), y1 = y(v), h = y0 - y1;
+    const sel = ui.stats.sel === d;
+    if (h > 0.5) {
+      const r = Math.min(4, h, bw / 2);
+      s += `<path d="M${x},${y0} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + bw - r} Q${x + bw},${y1} ${x + bw},${y1 + r} V${y0} Z" fill="var(--series-1)" opacity="${ui.stats.sel && !sel ? .45 : 1}"/>`;
+    }
+    if (i % labelEvery === 0 || i === n - 1) s += `<text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="10.5" fill="${sel ? 'var(--ink)' : 'var(--muted)'}">${md(d)}</text>`;
+    s += `<rect x="${padL + band * i}" y="${padT}" width="${band}" height="${H - padT - padB}" fill="transparent" data-i="${i}" style="cursor:pointer"/>`;
+  });
+  if (sum.avg > 0) s += `<line x1="${padL}" x2="${W - padR}" y1="${y(sum.avg)}" y2="${y(sum.avg)}" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="4 4" pointer-events="none"/><text x="${W - padR}" y="${y(sum.avg) - 5}" text-anchor="end" pointer-events="none" font-size="10.5" fill="var(--ink-2)">平均 ${fmt(sum.avg, nk.digits)}</text>`;
+  s += `<line x1="${padL}" x2="${W - padR}" y1="${y(0)}" y2="${y(0)}" stroke="var(--ink-2)" stroke-width="1"/>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+  svg.innerHTML = s;
+  const tip = $('#chartTip');
+  svg.querySelectorAll('rect[data-i]').forEach(r => {
+    const i = Number(r.dataset.i);
+    const show = () => {
+      const d = sum.days[i];
+      tip.innerHTML = `${md(d)}（${WD[parseYmd(d).getDay()]}）<b> ${fmt(sum.values[i], nk.digits)} ${nk.unit}</b>`;
+      tip.style.display = 'block';
+      const half = tip.offsetWidth / 2;
+      const cx = Math.max(half, Math.min(W - half, padL + band * (i + .5)));
+      tip.style.left = `${cx}px`;
+      tip.style.top = `${y(sum.values[i]) - 6}px`;
+    };
+    r.addEventListener('pointerenter', show);
+    r.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+    r.addEventListener('click', () => { ui.stats.sel = ui.stats.sel === sum.days[i] ? null : sum.days[i]; render(); });
+  });
+}
+
+/* ---------- 設定タブ ---------- */
+function renderSettings() {
+  const models = S.models.length ? S.models : [DEFAULT_MODEL];
+  if (!models.includes(S.model)) models.unshift(S.model);
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><button class="btn" data-act="closesettings">← 戻る</button><h2 style="margin:0;font-size:17px">設定</h2></div>
+    <div class="card"><h2>Gemini API</h2>
+      <div class="field"><label>API キー（この端末のブラウザ内にだけ保存）</label><input type="password" id="apiKey" value="${esc(S.apiKey)}" autocomplete="off" placeholder="AIza..."></div>
+      <div class="field"><label>モデル</label><select id="model">${models.map(m => `<option ${m === S.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></div>
+      <div class="btnrow"><button class="btn primary" data-act="savekey">保存</button><button class="btn" data-act="models">モデル一覧を取得</button></div>
+    </div>
+    <div class="card"><h2>食べる人</h2>
+      <div class="chips">${S.people.map(p => `<button data-act="delperson" data-id="${esc(p)}" aria-pressed="false">${esc(p)}${S.people.length > 1 ? ' ✕' : ''}</button>`).join('')}</div>
+      <div class="btnrow"><input id="newPerson" placeholder="名前を追加" style="flex:1 1 0;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:9px 10px;min-height:44px"><button class="btn" data-act="addperson" style="flex:none">追加</button></div>
+      <p class="small muted">複数人で食べた分は，記録時に選んだ人数で均等に按分されます．</p>
+    </div>
+    <div class="card"><h2>表示</h2>
+      <div class="seg">${[['auto', '🌓 自動'], ['dark', '🌙 ダーク'], ['light', '☀️ ライト']].map(([k, l]) => `<button data-act="theme" data-id="${k}" aria-pressed="${S.theme === k}">${l}</button>`).join('')}</div>
+    </div>
+    <div class="card"><h2>データ</h2>
+      <p class="small muted" style="margin-top:0">商品 ${data.products.length}件・在庫 ${data.items.filter(i => i.status === 'active').length}件・消費記録 ${data.events.length}件．データはこの端末のブラウザ内に保存されます．</p>
+      <div class="btnrow"><button class="btn" data-act="export">書き出し（JSON）</button><button class="btn" data-act="import">読み込み</button></div>
+      <div class="btnrow"><button class="btn danger" data-act="wipe">すべてのデータを削除</button></div>
+      <input type="file" id="importFile" accept="application/json,.json">
+    </div>
+    <p class="small muted" style="text-align:center">バージョン ${APP_BUILD}</p>`;
+}
+async function fetchModels() {
+  if (!S.apiKey) { toast('先に API キーを保存してください'); return; }
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${encodeURIComponent(S.apiKey)}`);
+    if (!res.ok) throw new Error(`${res.status}：${apiMsg(await res.text())}`);
+    const j = await res.json();
+    const list = (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent') && /gemini/i.test(m.name))
+      .map(m => m.name.replace(/^models\//, '')).sort();
+    if (!list.length) throw new Error('利用できるモデルが見つかりませんでした');
+    S.models = list; ls('models', JSON.stringify(list));
+    render(); toast(`${list.length}件のモデルを取得しました`);
+  } catch (e) { toast('取得に失敗：' + e.message); }
+}
+async function exportData() {
+  const blob = new Blob([JSON.stringify({ app: 'oyatsu-note', version: 1, exportedAt: new Date().toISOString(), people: S.people, ...data }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `おやつ期限ノート_${today()}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+async function importData(file) {
+  try {
+    const j = JSON.parse(await file.text());
+    if (j.app !== 'oyatsu-note') throw new Error('このアプリの書き出しファイルではありません');
+    if (!confirm(`現在のデータを置き換えて読み込みますか？\n商品 ${j.products.length}件・在庫 ${j.items.length}件・記録 ${j.events.length}件`)) return;
+    for (const s of ['products', 'items', 'events']) {
+      await dbClear(s);
+      for (const v of j[s] || []) await dbPut(s, v);
+      data[s] = (j[s] || []).slice();
+    }
+    if (Array.isArray(j.people) && j.people.length) { S.people = j.people; ls('people', JSON.stringify(S.people)); }
+    render(); toast('読み込みました');
+  } catch (e) { toast('読み込み失敗：' + e.message); }
+}
+
+/* ---------- イベント ---------- */
+document.addEventListener('click', async (ev) => {
+  const el = ev.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  if (act === 'closesheet' && el.classList.contains('backdrop') && ev.target !== el) return;
+  const cam = el.dataset.cam === '1';
+  switch (act) {
+    case 'front': pick(false, cam, onFront); break;
+    case 'back': pick(true, cam, onBack); break;
+    case 'expiry': pick(false, cam, onExpiry); break;
+    case 'cancel': wiz = null; render(); break;
+    case 'usep': {
+      const p = data.products.find(x => x.id === id);
+      wiz = { step: 'expiry', product: p, thumb: '', front: {} };
+      if (p.expiryKind === 'なし') { wiz.expiry = { expiry: null, precision: 'none' }; wiz.form = buildForm(); wiz.step = 'confirm'; }
+      render(); break;
+    }
+    case 'usematch': {
+      const p = wiz.match;
+      wiz = { step: 'expiry', product: p, thumb: wiz.thumb, front: wiz.front };
+      if (p.expiryKind === 'なし') { wiz.expiry = { expiry: null, precision: 'none' }; wiz.form = buildForm(); wiz.step = 'confirm'; }
+      render(); break;
+    }
+    case 'newprod': wiz.step = 'back'; wiz.match = null; render(); break;
+    case 'skipback': wiz.back = null; wiz.step = 'expiry'; wiz.error = null; render(); break;
+    case 'expskip': wiz.expiry = backExpiry(); wiz.form = buildForm(); wiz.step = 'confirm'; wiz.error = null; render(); break;
+    case 'expnone': wiz.expiry = { expiry: null, precision: 'none' }; wiz.form = buildForm(); wiz.step = 'confirm'; wiz.error = null; render(); break;
+    case 'expmanual': wiz.expiry = { expiry: null, precision: 'day', manual: true }; wiz.form = buildForm(); wiz.step = 'confirm'; wiz.error = null; render(); break;
+    case 'register': register(); break;
+    case 'page': ui.notePage = id; render(); break;
+    case 'toggledone': ui.doneOpen = !(ui.doneOpen !== false); ls('doneOpen', ui.doneOpen ? '1' : '0'); render(); break;
+    case 'restore': restoreItem(id); break;
+    case 'consume': {
+      const it = data.items.find(i => i.id === id);
+      const people = S.lastPeople.filter(p => S.people.includes(p));
+      sheetState = { itemId: id, action: 'eat', units: 1, people: people.length ? people : [S.people[0]], date: today() };
+      if (it) renderConsumeSheet();
+      break;
+    }
+    case 'sact': sheetState.action = id; renderConsumeSheet(); break;
+    case 'sdec': sheetState.units = Math.max(1, sheetState.units - 1); renderConsumeSheet(); break;
+    case 'sinc': { const it = data.items.find(i => i.id === sheetState.itemId); sheetState.units = Math.min(it.left, sheetState.units + 1); renderConsumeSheet(); break; }
+    case 'sall': sheetState.units = data.items.find(i => i.id === sheetState.itemId).left; renderConsumeSheet(); break;
+    case 'sperson': {
+      const ps = sheetState.people;
+      sheetState.people = ps.includes(id) ? ps.filter(p => p !== id) : [...ps, id];
+      renderConsumeSheet(); break;
+    }
+    case 'sok': commitConsume(); break;
+    case 'closesheet': closeSheet(); break;
+    case 'detail': renderDetailSheet(id); break;
+    case 'dsave': saveDetail(); break;
+    case 'ddel': deleteItem(); break;
+    case 'range': ui.stats.range = Number(id); ui.stats.sel = null; render(); break;
+    case 'nkey': ui.stats.key = id; render(); break;
+    case 'person': ui.stats.person = id; render(); break;
+    case 'undo': if (confirm('この記録を取り消しますか？（残り個数が戻ります）')) undoEvent(id); break;
+    case 'savekey':
+      S.apiKey = $('#apiKey').value.trim(); ls('apiKey', S.apiKey);
+      S.model = $('#model').value; ls('model', S.model);
+      toast('保存しました'); render(); break;
+    case 'models': S.apiKey = $('#apiKey').value.trim(); ls('apiKey', S.apiKey); fetchModels(); break;
+    case 'addperson': {
+      const v = $('#newPerson').value.trim();
+      if (v && !S.people.includes(v)) { S.people.push(v); ls('people', JSON.stringify(S.people)); render(); }
+      break;
+    }
+    case 'delperson':
+      if (S.people.length > 1 && confirm(`「${id}」を一覧から外しますか？（過去の記録は残ります）`)) {
+        S.people = S.people.filter(p => p !== id); ls('people', JSON.stringify(S.people));
+        if (ui.stats.person === id) ui.stats.person = '全員';
+        render();
+      }
+      break;
+    case 'closesettings': setTab(tabBeforeSettings); break;
+    case 'theme': S.theme = id; ls('theme', id); applyTheme(); render(); break;
+    case 'export': exportData(); break;
+    case 'import': $('#importFile').click(); break;
+    case 'wipe':
+      if (confirm('すべての商品・在庫・記録を削除します．元に戻せません．先に書き出しをおすすめします．削除しますか？') && confirm('本当に削除しますか？')) {
+        for (const s of ['products', 'items', 'events']) { await dbClear(s); data[s] = []; }
+        render(); toast('削除しました');
+      }
+      break;
+  }
+});
+document.addEventListener('change', (ev) => {
+  const t = ev.target;
+  if (t.id === 'importFile' && t.files[0]) { importData(t.files[0]); t.value = ''; }
+  if (t.dataset && t.dataset.rerender && wiz && wiz.step === 'confirm') {
+    readForm();
+    if (t.dataset.f === 'mid') wiz.form.small = MIDS[wiz.form.mid][0];
+    wiz.form.raw = t.dataset.f === 'expiry' ? '' : wiz.form.raw;
+    render();
+  }
+});
+document.addEventListener('input', (ev) => {
+  // 一覧だけを書き換える（入力欄を作り直さないので日本語入力の変換が途切れない）
+  if (ev.target.id === 'quickQ') {
+    ui.quickQ = ev.target.value;
+    const el = $('#quickList');
+    if (el) el.innerHTML = quickListHtml();
+  }
+});
+window.addEventListener('resize', () => { if (ui.tab === 'stats') drawChart(); });
+
+/* ---------- 新しい版の確認 ---------- */
+async function checkUpdate() {
+  if (!/^https?:/.test(location.protocol)) return;
+  try {
+    const res = await fetch(location.href.split('#')[0], { cache: 'no-store' });
+    const m = (await res.text()).match(/const APP_BUILD = '([^']+)'/);
+    if (m && m[1] !== APP_BUILD) $('#updateBanner').style.display = 'block';
+  } catch (e) { /* オフライン時は何もしない */ }
+}
+
+/* ---------- 起動 ---------- */
+(async function init() {
+  applyTheme();
+  const [y, mo, rest] = APP_BUILD.split('-');
+  const [d, hm] = rest.split(' ');
+  $('#buildLabel').innerHTML = `${y}年${Number(mo)}月${Number(d)}日<br>${hm}更新`;
+  try {
+    DB = await openDB();
+    data.products = await dbAll('products');
+    data.items = await dbAll('items');
+    data.events = await dbAll('events');
+  } catch (e) {
+    $('#main').innerHTML = `<div class="err">データベースを開けませんでした：${esc(e.message)}\nプライベートブラウズでは保存できない場合があります．</div>`;
+    return;
+  }
+  const hasSoon = data.items.some(i => i.status === 'active' && bucketOf(i, today()) === 'soon');
+  setTab(hasSoon ? 'note' : 'add');
+  checkUpdate();
+})();
+</script>
+</body>
+</html>
