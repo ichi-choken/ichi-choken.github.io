@@ -328,6 +328,37 @@
   }
   input:focus { border-color: var(--accent); }
 
+  /* 日付・時刻入力のアイコン：既定の黒く小さいアイコンをアクセント色の大きいアイコンに差し替える */
+  body { color-scheme: dark; }            /* ブラウザの日付ピッカー本体もダーク表示にする */
+  body.theme-light { color-scheme: light; }
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="month"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    width: 22px;
+    height: 22px;
+    padding: 3px;
+    margin-left: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 1;
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c8ff57' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4.5' width='18' height='16.5' rx='2.5'/><path d='M3 9.5h18M8 2.5v4M16 2.5v4'/><rect x='7' y='13' width='3' height='3' rx='0.5' fill='%23c8ff57' stroke='none'/></svg>") center / 20px 20px no-repeat;
+  }
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c8ff57' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3.5 2'/></svg>");
+  }
+  body.theme-light input[type="date"]::-webkit-calendar-picker-indicator,
+  body.theme-light input[type="month"]::-webkit-calendar-picker-indicator {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232d6a4f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4.5' width='18' height='16.5' rx='2.5'/><path d='M3 9.5h18M8 2.5v4M16 2.5v4'/><rect x='7' y='13' width='3' height='3' rx='0.5' fill='%232d6a4f' stroke='none'/></svg>");
+  }
+  body.theme-light input[type="time"]::-webkit-calendar-picker-indicator {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232d6a4f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3.5 2'/></svg>");
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="month"]::-webkit-calendar-picker-indicator:hover,
+  input[type="time"]::-webkit-calendar-picker-indicator:hover {
+    background-color: var(--surface);
+  }
+
   /* ボタン */
   .btn {
     width: 100%;
@@ -5351,7 +5382,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 14:17';
+const APP_BUILD = '2026-10-16 15:20';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
