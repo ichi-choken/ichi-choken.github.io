@@ -5315,7 +5315,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 12:28';
+const APP_BUILD = '2026-10-16 12:32';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6095,7 +6095,11 @@ ${knownStoreBrandsPromptText()}
 - 合計金額は税・割引をすべて反映した実際の支払い金額（税込み合計）。小計ではなく、レシートに「合計」「お買上金額」「お支払い金額」として印字されている金額
 - 商品名は絶対に省略・短縮しないこと
 - 同じ商品を複数個買った行は1つの item にまとめ、quantity に個数、price に行の合計金額を入れる（単価を price にしない）。個数・単価の補足行（例：「2個 × 単150」）は独立した item にしない
-- ポイント情報・会員情報・税額明細・「合計」「お会計」等の合計行はitemsに含めない（購入商品のみ）`;
+- 会員情報・税額明細・ポイント付与（獲得ポイント・ポイント残高）・「合計」「お会計」等の合計行はitemsに含めない
+- 割引・値引・クーポン・ポイント利用（ポイント支払い・ポイント充当）の行は、それぞれ独立した item として price をマイナスの数値で入れる（例：「値引 −50」→ price: -50、「ポイント利用 300」→ price: -300）。元の商品の price からは差し引かず、商品行はレシートに印字された金額のままにする
+- 割引系 item の name はレシートの表記どおり（例：「値引」「クーポン割引」「ポイント利用」）。quantity は 1
+- 割引系 item の middle_category / small_category は、特定の商品に対する割引ならその商品と同じカテゴリ、レシート全体に対する割引・クーポン・ポイント利用なら price が最も大きい商品と同じカテゴリにする
+- items の price をすべて足した値が total（実際の支払い金額）と一致するようにする`;
 
     const _geminiUrl1 = `https://generativelanguage.googleapis.com/v1beta/models/${localStorage.getItem('gemini_model') || 'gemini-2.5-flash'}:generateContent?key=${apiKey}`;
     const _geminiBody1 = JSON.stringify({
@@ -7143,6 +7147,13 @@ function unitPriceHtml(item) {
   return `<span class="item-unit-price">(¥${unit.toLocaleString()}×${q})</span>`;
 }
 
+// 集計用の商品金額。収入（マイナスで保存）は正の値に直し、
+// 支出は割引・ポイント利用などのマイナス商品を符号のまま差し引く
+function _statItemAmount(r, item) {
+  const p = (item && item.price) || 0;
+  return (r && r.entry_type === 'income') ? Math.abs(p) : p;
+}
+
 // 割り勘考慮の実質負担合計を返す
 function effectiveTotal(r) {
   const itemsSum = (r.items || []).reduce((s, i) => s + (i.price || 0), 0);
@@ -7496,8 +7507,9 @@ var openItemEditModal = function(idx) {
   document.getElementById('edit-item-price').value = item.price || 0;
   document.getElementById('edit-item-qty').value = itemQty(item);
 
-  // price がマイナス（収入）かどうかで UI を切り替える
-  const isIncome = (item.price || 0) < 0 || currentRecord.entry_type === 'income';
+  // 収入レシートかどうかで UI を切り替える
+  // （支出レシートのマイナス金額は割引・ポイント利用なので収入扱いにしない）
+  const isIncome = currentRecord.entry_type === 'income';
 
   const largeCatSel  = document.getElementById('edit-item-large-cat');
   const largeCatLabel= document.getElementById('edit-large-label');
@@ -7562,8 +7574,8 @@ async function saveItemEdit() {
   const newPrice = parseInt(document.getElementById('edit-item-price').value) || 0;
   const newQty   = Math.max(1, parseInt(document.getElementById('edit-item-qty').value, 10) || 1);
 
-  // price がマイナス（収入）かどうか
-  const isIncome = newPrice < 0 || currentRecord.entry_type === 'income';
+  // 収入レシートかどうか（支出レシートのマイナス金額は割引・ポイント利用として扱う）
+  const isIncome = !isPreview && !!currentRecord && currentRecord.entry_type === 'income';
 
   if (isPreview) {
     if (previewEditItemIndex !== null) {
@@ -8302,7 +8314,7 @@ function showYearlyMonthDetail(records, year, monthIdx) {
         const key = isIncomeItem ? '収入' : ((midId && midIdToLarge[midId]) || '未分類');
         if (_isIncomeStat && key !== '収入') return;
         if (!_isIncomeStat && key === '収入') return;
-        map[key] = (map[key] || 0) + Math.abs((item.price || 0) * ratio);
+        map[key] = (map[key] || 0) + _statItemAmount(r, item) * ratio;
       });
     });
   } else {
@@ -8310,11 +8322,11 @@ function showYearlyMonthDetail(records, year, monthIdx) {
       const ratio = r.split_enabled ? 1 / (r.split_count || 2) : 1;
       (r.items || []).forEach(item => {
         const key = resolveMiddleName(item);
-        map[key] = (map[key] || 0) + Math.abs((item.price || 0) * ratio);
+        map[key] = (map[key] || 0) + _statItemAmount(r, item) * ratio;
       });
     });
   }
-  Object.keys(map).forEach(k => { map[k] = Math.ceil(Math.abs(map[k])); });
+  Object.keys(map).forEach(k => { map[k] = Math.max(0, Math.ceil(map[k])); });
 
   const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]);
   const labels = sorted.map(e => e[0]);
@@ -8502,7 +8514,7 @@ function aggregateTrack(records, category, period, categoryOf = trackCategoryOf,
     const key = trackKeyOf(r.date, unit);
     (r.items || []).forEach(item => {
       if (categoryOf(item) !== category) return;
-      const v = Math.abs((item.price || 0) * ratio);
+      const v = _statItemAmount(r, item) * ratio;
       rawTotal += v;
       const i = key != null ? index.get(key) : undefined;
       if (i === undefined) undated += v;
@@ -8529,7 +8541,7 @@ function aggregateTrackUnitPrice(records, match, period, range = null) {
     (r.items || []).forEach(item => {
       if (!match(item)) return;
       const q = itemQty(item);
-      const v = Math.abs(item.price || 0);
+      const v = _statItemAmount(r, item);
       allSum += v; allQty += q;
       const i = key != null ? index.get(key) : undefined;
       if (i === undefined) { undatedQty += q; return; }
@@ -8688,7 +8700,7 @@ function renderStats(records) {
       const ratio = r.split_enabled ? 1 / (r.split_count || 2) : 1;
       (r.items || []).forEach(item => {
         const key = item.middle_category || 'その他収入';
-        incomeMap[key] = (incomeMap[key] || 0) + Math.abs((item.price || 0) * ratio);
+        incomeMap[key] = (incomeMap[key] || 0) + _statItemAmount(r, item) * ratio;
       });
     });
     Object.keys(incomeMap).forEach(k => { incomeMap[k] = Math.ceil(incomeMap[k]); });
@@ -8711,10 +8723,10 @@ function renderStats(records) {
       (r.items || []).forEach(item => {
         const midId = resolveMidId(item);
         const largeName = (midId && midIdToLarge[midId]) || '未分類';
-        largeMap[largeName] = (largeMap[largeName] || 0) + Math.abs((item.price || 0) * ratio);
+        largeMap[largeName] = (largeMap[largeName] || 0) + _statItemAmount(r, item) * ratio;
       });
     });
-    Object.keys(largeMap).forEach(k => { largeMap[k] = Math.ceil(Math.abs(largeMap[k])); });
+    Object.keys(largeMap).forEach(k => { largeMap[k] = Math.max(0, Math.ceil(largeMap[k])); });
     renderBarChart(largeMap, '大カテゴリ別支出', false);
   } else {
     // largeDef未設定時は従来の中カテゴリ別
@@ -8723,10 +8735,10 @@ function renderStats(records) {
       const ratio = r.split_enabled ? 1 / (r.split_count || 2) : 1;
       (r.items || []).forEach(item => {
         const key = resolveMiddleName(item);
-        midMap[key] = (midMap[key] || 0) + Math.abs((item.price || 0) * ratio);
+        midMap[key] = (midMap[key] || 0) + _statItemAmount(r, item) * ratio;
       });
     });
-    Object.keys(midMap).forEach(k => { midMap[k] = Math.ceil(Math.abs(midMap[k])); });
+    Object.keys(midMap).forEach(k => { midMap[k] = Math.max(0, Math.ceil(midMap[k])); });
     renderBarChart(midMap, isIncomeStat ? '中カテゴリ別収入' : '中カテゴリ別支出', false);
   }
 }
@@ -9081,7 +9093,7 @@ async function renderIncomeCatReceipts(catName) {
       const matchItems = (r.items || []).filter(item => (item.middle_category || 'その他収入') === catName);
       if (matchItems.length === 0) return null;
       const ratio = r.split_enabled ? 1 / (r.split_count || 2) : 1;
-      const matchTotal = matchItems.reduce((s, i) => s + Math.abs((i.price || 0) * ratio), 0);
+      const matchTotal = matchItems.reduce((s, i) => s + _statItemAmount(r, i) * ratio, 0);
       return { r, matchItems, matchTotal };
     })
     .filter(Boolean)
@@ -9321,18 +9333,18 @@ var drillDown = async function(label) {
         const midId = isIncomeItem ? null : resolveMidId(item);
         const itemLarge = isIncomeItem ? '収入' : ((midId && midIdToLarge[midId]) || '未分類');
         if (currentStatType !== 'income' && isIncomeItem) return;
-        _largeCheck[itemLarge] = (_largeCheck[itemLarge] || 0) + Math.abs((item.price || 0) * ratio);
+        _largeCheck[itemLarge] = (_largeCheck[itemLarge] || 0) + _statItemAmount(r, item) * ratio;
         if (itemLarge !== label) return;
         // 収入アイテムは middle_category を直接中カテゴリ名として使う
         const midName = isIncomeItem
           ? (item.middle_category || 'その他収入')
           : (resolveMiddleName(item) || 'その他');
-        midMap[midName] = (midMap[midName] || 0) + Math.abs((item.price || 0) * ratio);
+        midMap[midName] = (midMap[midName] || 0) + _statItemAmount(r, item) * ratio;
       });
     });
     console.log('[DEBUG] 集計再計算 largeMap:', JSON.stringify(Object.fromEntries(Object.entries(_largeCheck).map(([k,v])=>[k,Math.ceil(v)]))));
     console.log('[DEBUG] midMap合計:', Math.ceil(Object.values(midMap).reduce((s,v)=>s+v,0)), '各:', JSON.stringify(Object.fromEntries(Object.entries(midMap).map(([k,v])=>[k,Math.ceil(v)]))));
-    Object.keys(midMap).forEach(k => { midMap[k] = Math.ceil(Math.abs(midMap[k])); });
+    Object.keys(midMap).forEach(k => { midMap[k] = Math.max(0, Math.ceil(midMap[k])); });
     currentChartMap = midMap;
     currentChartTitle = `${label} › 中カテゴリ別`;
     currentIsDrill = true;
@@ -9351,10 +9363,10 @@ var drillDown = async function(label) {
       .filter(item => resolveMiddleName(item) === middle)
       .forEach(item => {
         const key = item.small_category || 'その他';
-        smallMap[key] = (smallMap[key] || 0) + Math.abs((item.price || 0) * ratio);
+        smallMap[key] = (smallMap[key] || 0) + _statItemAmount(r, item) * ratio;
       });
   });
-  Object.keys(smallMap).forEach(k => { smallMap[k] = Math.ceil(Math.abs(smallMap[k])); });
+  Object.keys(smallMap).forEach(k => { smallMap[k] = Math.max(0, Math.ceil(smallMap[k])); });
 
   // レシートリストをリセット
   document.getElementById('stats-receipt-list-section').style.display = 'none';
@@ -9475,7 +9487,7 @@ async function renderLargeDrillReceipts(large, midIdToLarge, records) {
       });
       if (matchItems.length === 0) return null;
       const ratio = r.split_enabled ? 1 / (r.split_count || 2) : 1;
-      const matchTotal = matchItems.reduce((s, i) => s + Math.abs((i.price || 0) * ratio), 0);
+      const matchTotal = matchItems.reduce((s, i) => s + _statItemAmount(r, i) * ratio, 0);
       return { r, matchItems, matchTotal };
     })
     .filter(Boolean)
@@ -9535,7 +9547,7 @@ async function renderMiddleDrillReceipts(middle, records) {
       const matchItems = (r.items || []).filter(item => resolveMiddleName(item) === middle);
       if (matchItems.length === 0) return null;
       const ratio = r.split_enabled ? 1 / (r.split_count || 2) : 1;
-      const matchTotal = matchItems.reduce((s, i) => s + Math.abs((i.price || 0) * ratio), 0);
+      const matchTotal = matchItems.reduce((s, i) => s + _statItemAmount(r, i) * ratio, 0);
       return { r, matchItems, matchTotal };
     })
     .filter(Boolean)
@@ -9603,7 +9615,7 @@ async function renderSmallDrillReceipts(middle, small) {
       );
       if (matchItems.length === 0) return null;
       const ratio = r.split_enabled ? 1 / (r.split_count || 2) : 1;
-      return { r, matchItems, matchTotal: matchItems.reduce((s, i) => s + Math.abs((i.price || 0) * ratio), 0) };
+      return { r, matchItems, matchTotal: matchItems.reduce((s, i) => s + _statItemAmount(r, i) * ratio, 0) };
     })
     .filter(Boolean)
     .sort((a, b) => (b.r.id || 0) - (a.r.id || 0));
@@ -9827,10 +9839,10 @@ async function _drillUpInner() {
         const midName = resolveMiddleName(item);
         const midEntry = categoryDef.find(m => m.middle === midName);
         if (!midEntry || !midIds.has(midEntry.id)) return;
-        midMap[midName] = (midMap[midName] || 0) + Math.abs((item.price || 0) * ratio);
+        midMap[midName] = (midMap[midName] || 0) + _statItemAmount(r, item) * ratio;
       });
     });
-    Object.keys(midMap).forEach(k => { midMap[k] = Math.ceil(Math.abs(midMap[k])); });
+    Object.keys(midMap).forEach(k => { midMap[k] = Math.max(0, Math.ceil(midMap[k])); });
     currentChartTitle = `${drillLarge} › 中カテゴリ別`;
     currentIsDrill = true;
     renderChart(midMap, currentChartTitle, true);
