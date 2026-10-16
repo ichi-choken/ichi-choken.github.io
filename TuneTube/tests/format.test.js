@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtCount, fmtDuration, fmtMinutes, parseDuration } from '../js/format.js';
+import { fmtCount, fmtDuration, fmtMinutes, fmtSubscribers, parseDuration } from '../js/format.js';
 
 test('ISO 8601 の長さを秒にする', () => {
   assert.equal(parseDuration('PT45S'), 45);
@@ -25,4 +25,12 @@ test('再生回数の表示', () => {
 
 test('分の表示', () => {
   assert.equal(fmtMinutes(125), '2分');
+});
+
+test('登録者数の表示', () => {
+  assert.equal(fmtSubscribers('1234'), '登録者 1234人');
+  assert.equal(fmtSubscribers('1230000'), '登録者 123万人');
+  assert.equal(fmtSubscribers('15000'), '登録者 1.5万人');
+  assert.equal(fmtSubscribers('250000000'), '登録者 2.5億人');
+  assert.equal(fmtSubscribers(null), '');
 });

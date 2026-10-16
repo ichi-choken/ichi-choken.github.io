@@ -11,6 +11,13 @@ export interface Channel {
   fetchedAt: number;
 }
 
+/** チャンネルを探す画面で表示する情報（登録時は Channel の項目だけ保存する）． */
+export interface ChannelInfo extends Channel {
+  description: string;
+  /** 登録者数．非公開のチャンネルは null． */
+  subscribers: string | null;
+}
+
 export interface Video {
   id: string;
   title: string;

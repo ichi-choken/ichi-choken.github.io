@@ -12,6 +12,8 @@ export const DAILY_UNITS = 10000;
 export const DAILY_SEARCH_CALLS = 100;
 /** 1回の検索で取得する件数． */
 export const SEARCH_MAX_RESULTS = 25;
+/** キーワードでチャンネルを探すときの件数． */
+export const CHANNEL_SEARCH_MAX_RESULTS = 12;
 /** 1チャンネルあたり取得する最新動画の件数． */
 export const CHANNEL_VIDEOS_PER_CHANNEL = 15;
 /** シニアモードで一覧に出す最大件数． */

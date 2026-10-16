@@ -17,3 +17,9 @@ body.mode-senior .big-controls button { min-height: 80px; font-size: 1.05em; fon
   body.mode-senior .card .thumb { width: 100%; max-width: none; }
   body.mode-senior .meta { padding: 10px 12px; }
 }
+
+/* チャンネルを探す画面も大きく */
+body.mode-senior .cat { min-height: 96px; }
+body.mode-senior .cat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+body.mode-senior .finder-results .add { min-height: 52px; font-size: .95em; }
+body.mode-senior .finder-results img { width: 64px; height: 64px; }

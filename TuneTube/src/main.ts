@@ -4,6 +4,7 @@ import {
 } from './config.js';
 import { channelVideos, refreshChannels, resolveChannel, searchVideos } from './api.js';
 import { ExamTimer } from './exam.js';
+import { openFinder } from './finder.js';
 import { filterVideos } from './filters.js';
 import { fmtDate, fmtMinutes } from './format.js';
 import { PIN_PATTERN, hashPin } from './pin.js';
@@ -62,6 +63,7 @@ function applyMode(): void {
 function renderHome(): void {
   $('#searchForm').hidden = view !== 'search';
   $('#chips').hidden = view !== 'channels';
+  $('#feedTools').hidden = !(view === 'channels' && settings.mode === 'standard' && settings.channels.length > 0);
   if (view === 'channels') void loadChannelFeed();
   else showSearchResults();
 }
@@ -87,8 +89,13 @@ async function loadChannelFeed(): Promise<void> {
   renderChips();
   if (!settings.channels.length) {
     setStatus('');
-    box.append(emptyState('まだチャンネルが登録されていません．',
-      'ご家族の方へ：「設定」から，見せたいチャンネルを登録してください．', '設定を開く', () => void openSettings()));
+    const empty = emptyState('まだチャンネルが登録されていません．',
+      'ニュース・料理・体操などのジャンルを選ぶだけで，おすすめのチャンネルを追加できます．',
+      'ジャンルを選んで探す', () => void findChannelsFromHome());
+    const toSettings = el('button', { type: 'button', className: 'link-button' }, 'URLや@ハンドルで追加する（設定）');
+    toSettings.addEventListener('click', () => void openSettings());
+    empty.append(el('div', {}, toSettings));
+    box.append(empty);
     return;
   }
   if (!settings.apiKey) {
@@ -298,8 +305,8 @@ function renderQuota(): void {
   $('#quota').textContent = `この端末からの今日の使用量（目安）：検索 ${q.searches} / ${DAILY_SEARCH_CALLS} 回，その他 ${q.units} / ${DAILY_UNITS} ユニット．枠はプロジェクト全体で共有されます．`;
 }
 
-async function openSettings(): Promise<void> {
-  if (settings.pinHash && !(await askPin())) return;
+async function openSettings(unlocked = false): Promise<void> {
+  if (settings.pinHash && !unlocked && !(await askPin())) return;
   draft = structuredClone(settings);
   $<HTMLInputElement>('#apiKey').value = draft.apiKey;
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name="mode"]')) r.checked = r.value === draft.mode;
@@ -341,6 +348,29 @@ async function addChannel(): Promise<void> {
   } catch (e) {
     msg.textContent = errMsg(e);
   }
+}
+
+/** 設定画面から探す：追加先は設定の下書き（保存して閉じると反映）． */
+async function findChannelsInSettings(): Promise<void> {
+  const msg = $('#channelMsg');
+  const key = $<HTMLInputElement>('#apiKey').value.trim();
+  if (!key) { msg.textContent = '先にAPIキーを入力してください．'; return; }
+  const before = draft.channels.length;
+  msg.textContent = '';
+  await openFinder({ apiKey: key, channels: draft.channels, onChange: renderChannelList });
+  if (draft.channels.length !== before) msg.textContent = '登録チャンネルを変更しました．「保存して閉じる」で反映されます．';
+}
+
+/** 一覧画面から探す：追加するとすぐ保存して一覧に反映する．PINがあれば先に確認する． */
+async function findChannelsFromHome(): Promise<void> {
+  if (settings.pinHash && !(await askPin())) return;
+  if (!settings.apiKey) {
+    await openSettings(true);
+    $('#channelMsg').textContent = '先にAPIキーを入力してください．';
+    return;
+  }
+  await openFinder({ apiKey: settings.apiKey, channels: settings.channels, onChange: () => saveSettings(settings) });
+  applyMode();
 }
 
 async function setPin(): Promise<void> {
@@ -392,6 +422,8 @@ function bindEvents(): void {
   $('#btnExamBack').addEventListener('click', closeVideo);
 
   $('#btnAddChannel').addEventListener('click', () => void addChannel());
+  $('#btnOpenFinder').addEventListener('click', () => void findChannelsInSettings());
+  $('#btnFindChannels').addEventListener('click', () => void findChannelsFromHome());
   $('#channelInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); void addChannel(); }
   });

@@ -1,11 +1,11 @@
 // TubeTune service worker
 // アプリ本体だけをキャッシュする．YouTube の API・動画・サムネイルはキャッシュせず，そのまま通信する．
-const CACHE_VERSION = 'tubetune-v2';
+const CACHE_VERSION = 'tubetune-v3';
 const APP_SHELL = [
   './', './index.html', './terms.html', './privacy.html', './manifest.webmanifest',
   './styles/base.css', './styles/senior.css', './styles/exam.css',
   './js/main.js', './js/api.js', './js/channel-input.js', './js/config.js', './js/exam.js',
-  './js/filters.js', './js/format.js', './js/pin.js', './js/player.js', './js/pwa.js',
+  './js/filters.js', './js/finder.js', './js/format.js', './js/pin.js', './js/player.js', './js/presets.js', './js/pwa.js',
   './js/quota.js', './js/settings.js', './js/storage.js', './js/ui.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png',
 ];

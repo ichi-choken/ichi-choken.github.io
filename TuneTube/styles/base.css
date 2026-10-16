@@ -135,3 +135,26 @@ label { display: block; margin: 8px 0; }
   .card .thumb { width: 44%; flex-shrink: 0; }
   .meta { padding: 6px 8px 6px 0; }
 }
+
+/* ===== チャンネルを探す ===== */
+.feed-tools { margin-bottom: 12px; }
+.link-button { border: none; background: transparent; color: var(--accent); text-decoration: underline; margin-top: 8px; }
+.finder-open { width: 100%; margin: 4px 0 8px; }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 12px 0; }
+.cat {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-height: 80px; padding: 8px 4px; font-weight: 700; border-width: 2px; line-height: 1.3;
+}
+.cat-icon { font-size: 1.7em; line-height: 1; }
+.cat[aria-pressed="true"] { background: var(--soft); border-color: var(--accent); }
+.finder-keyword { margin: 4px 0 8px; }
+.finder-keyword summary { cursor: pointer; color: var(--accent); min-height: var(--tap); display: flex; align-items: center; }
+.finder-keyword form { margin-top: 4px; }
+.finder-results { list-style: none; padding: 0; margin: 0; }
+.finder-results li { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.finder-results img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; background: var(--line); flex-shrink: 0; }
+.fr-body { flex: 1; min-width: 0; }
+.fr-name { font-weight: 700; overflow-wrap: anywhere; }
+.fr-desc { color: var(--sub); font-size: .82em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.finder-results .add { flex-shrink: 0; min-width: 6.5em; align-self: center; }
+.finder-more { margin-top: 12px; }

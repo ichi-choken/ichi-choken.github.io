@@ -25,6 +25,20 @@ export function fmtCount(value) {
         return (n / 1e4).toFixed(1).replace(/\.0$/, '') + '万回';
     return `${n}回`;
 }
+/** チャンネル登録者数を「登録者 12万人」形式にする．非公開なら空文字． */
+export function fmtSubscribers(value) {
+    if (value === null)
+        return '';
+    const n = Number(value) || 0;
+    let s;
+    if (n >= 1e8)
+        s = (n / 1e8).toFixed(1).replace(/\.0$/, '') + '億';
+    else if (n >= 1e4)
+        s = (n / 1e4).toFixed(1).replace(/\.0$/, '') + '万';
+    else
+        s = String(n);
+    return `登録者 ${s}人`;
+}
 export function fmtDate(iso) {
     return new Date(iso).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
 }

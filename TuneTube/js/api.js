@@ -1,6 +1,6 @@
 // ===== YouTube Data API v3 =====
 // 公式APIのみを使う（YouTubeサイトのスクレイピングはしない）．
-import { CHANNEL_REFRESH_MS, CHANNEL_VIDEOS_PER_CHANNEL, SEARCH_MAX_RESULTS } from './config.js';
+import { CHANNEL_REFRESH_MS, CHANNEL_SEARCH_MAX_RESULTS, CHANNEL_VIDEOS_PER_CHANNEL, SEARCH_MAX_RESULTS, } from './config.js';
 import { parseChannelInput } from './channel-input.js';
 import { parseDuration } from './format.js';
 import { addQuota } from './quota.js';
@@ -114,6 +114,49 @@ export async function resolveChannel(input, key) {
     if (!it)
         throw new ApiError('チャンネルが見つかりませんでした．入力を確認してください．');
     return toChannel(it);
+}
+function toChannelInfo(it) {
+    const st = it.statistics;
+    return {
+        ...toChannel(it),
+        description: it.snippet.description ?? '',
+        subscribers: !st || st.hiddenSubscriberCount ? null : (st.subscriberCount ?? null),
+    };
+}
+/** チャンネルIDの一覧から，探す画面用の情報を取得する（50件ごとに1ユニット．検索APIは使わない）． */
+export async function fetchChannelInfos(ids, key) {
+    const cacheKey = `channels:${ids.join(',')}`;
+    const hit = cacheGet(cacheKey);
+    if (hit)
+        return hit;
+    const found = new Map();
+    for (let i = 0; i < ids.length; i += 50) {
+        const data = await call('channels', {
+            part: 'snippet,contentDetails,statistics',
+            id: ids.slice(i, i + 50).join(','),
+        }, key, { units: 1 });
+        for (const it of data.items ?? [])
+            found.set(it.id, toChannelInfo(it));
+    }
+    // 指定した順に並べ，取得できなかったIDは除く
+    const list = ids.map((id) => found.get(id)).filter((c) => !!c);
+    cacheSet(cacheKey, list);
+    return list;
+}
+/** キーワードでチャンネルを探す．検索APIを1回使う（1日の回数に上限あり）． */
+export async function searchChannels(q, key) {
+    const cacheKey = `channelSearch:${q}`;
+    const hit = cacheGet(cacheKey);
+    if (hit)
+        return hit;
+    const data = await call('search', {
+        part: 'snippet', type: 'channel', maxResults: String(CHANNEL_SEARCH_MAX_RESULTS), q,
+        regionCode: 'JP', relevanceLanguage: 'ja', safeSearch: 'moderate',
+    }, key, { search: true });
+    const ids = (data.items ?? []).map((i) => i.id?.channelId).filter((id) => !!id);
+    const list = ids.length ? await fetchChannelInfos(ids, key) : [];
+    cacheSet(cacheKey, list);
+    return list;
 }
 /** 名前・アイコンが古くなった登録チャンネルを再取得する（保存データを定期的に更新するため）． */
 export async function refreshChannels(channels, key) {

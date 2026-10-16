@@ -55,6 +55,9 @@
       </div>
       <p class="hint">検索結果はYouTube全体の一部です．検索は1日の回数に上限があるため，よく見るチャンネルは「登録チャンネル」に追加するのがおすすめです．</p>
     </form>
+    <div id="feedTools" class="feed-tools" hidden>
+      <button id="btnFindChannels" type="button">＋ おすすめからチャンネルを追加</button>
+    </div>
     <div id="chips" class="chips"></div>
     <div id="notice" class="notice" hidden></div>
     <p id="status" class="status"></p>
@@ -147,7 +150,8 @@
 
     <fieldset>
       <legend>登録チャンネル（ご家族が設定）</legend>
-      <p class="hint">チャンネルのURL，@ハンドル，またはチャンネルIDを入力してください．</p>
+      <button id="btnOpenFinder" type="button" class="primary finder-open">ジャンルを選んで探す（おすすめ）</button>
+      <p class="hint">知っているチャンネルは，URL，@ハンドル，またはチャンネルIDでも追加できます．</p>
       <div class="search-row">
         <input id="channelInput" type="text" placeholder="例：@channelname" autocomplete="off">
         <button id="btnAddChannel" type="button">追加</button>
@@ -193,6 +197,25 @@
       <button type="submit" value="save" class="primary">保存して閉じる</button>
     </div>
   </form>
+</dialog>
+
+<!-- チャンネルを探す（カテゴリーを選ぶだけで追加） -->
+<dialog id="finderDialog" aria-labelledby="finderTitle">
+  <h2 id="finderTitle">チャンネルを探す</h2>
+  <p class="hint">見たいジャンルを押すと，おすすめのチャンネルが出ます．「＋ 追加」を押すと登録チャンネルに入ります．</p>
+  <div id="catGrid" class="cat-grid" role="group" aria-label="ジャンル"></div>
+  <details class="finder-keyword">
+    <summary>キーワードで探す</summary>
+    <form id="channelSearchForm" class="search-row">
+      <input id="channelQ" type="search" placeholder="例：落語，釣り，ピアノ" autocomplete="off" enterkeyhint="search">
+      <button class="primary" type="submit">探す</button>
+    </form>
+    <p class="hint">検索は1日の回数に上限があり，アプリの利用者全体で共有しています．</p>
+  </details>
+  <p id="finderStatus" class="status" role="status"></p>
+  <ul id="finderResults" class="finder-results"></ul>
+  <div id="finderMore" class="finder-more"></div>
+  <div class="row sticky-actions"><button id="btnFinderDone" type="button" class="primary">完了</button></div>
 </dialog>
 
 <!-- iPhone向け：ホーム画面への追加手順 -->

@@ -1,11 +1,13 @@
 // ===== YouTube Data API v3 =====
 // 公式APIのみを使う（YouTubeサイトのスクレイピングはしない）．
-import { CHANNEL_REFRESH_MS, CHANNEL_VIDEOS_PER_CHANNEL, SEARCH_MAX_RESULTS } from './config.js';
+import {
+  CHANNEL_REFRESH_MS, CHANNEL_SEARCH_MAX_RESULTS, CHANNEL_VIDEOS_PER_CHANNEL, SEARCH_MAX_RESULTS,
+} from './config.js';
 import { parseChannelInput } from './channel-input.js';
 import { parseDuration } from './format.js';
 import { addQuota } from './quota.js';
 import { cacheGet, cacheSet } from './storage.js';
-import type { Channel, Video } from './types.js';
+import type { Channel, ChannelInfo, Video } from './types.js';
 
 const BASE = 'https://www.googleapis.com/youtube/v3/';
 
@@ -128,6 +130,54 @@ export async function resolveChannel(input: string, key: string): Promise<Channe
   const it = data.items?.[0];
   if (!it) throw new ApiError('チャンネルが見つかりませんでした．入力を確認してください．');
   return toChannel(it);
+}
+
+interface ChannelInfoItem extends ChannelItem {
+  snippet: ChannelItem['snippet'] & { description?: string };
+  statistics?: { subscriberCount?: string; hiddenSubscriberCount?: boolean };
+}
+
+function toChannelInfo(it: ChannelInfoItem): ChannelInfo {
+  const st = it.statistics;
+  return {
+    ...toChannel(it),
+    description: it.snippet.description ?? '',
+    subscribers: !st || st.hiddenSubscriberCount ? null : (st.subscriberCount ?? null),
+  };
+}
+
+/** チャンネルIDの一覧から，探す画面用の情報を取得する（50件ごとに1ユニット．検索APIは使わない）． */
+export async function fetchChannelInfos(ids: string[], key: string): Promise<ChannelInfo[]> {
+  const cacheKey = `channels:${ids.join(',')}`;
+  const hit = cacheGet<ChannelInfo[]>(cacheKey);
+  if (hit) return hit;
+  const found = new Map<string, ChannelInfo>();
+  for (let i = 0; i < ids.length; i += 50) {
+    const data = await call<{ items?: ChannelInfoItem[] }>('channels', {
+      part: 'snippet,contentDetails,statistics',
+      id: ids.slice(i, i + 50).join(','),
+    }, key, { units: 1 });
+    for (const it of data.items ?? []) found.set(it.id, toChannelInfo(it));
+  }
+  // 指定した順に並べ，取得できなかったIDは除く
+  const list = ids.map((id) => found.get(id)).filter((c): c is ChannelInfo => !!c);
+  cacheSet(cacheKey, list);
+  return list;
+}
+
+/** キーワードでチャンネルを探す．検索APIを1回使う（1日の回数に上限あり）． */
+export async function searchChannels(q: string, key: string): Promise<ChannelInfo[]> {
+  const cacheKey = `channelSearch:${q}`;
+  const hit = cacheGet<ChannelInfo[]>(cacheKey);
+  if (hit) return hit;
+  const data = await call<{ items?: { id?: { channelId?: string } }[] }>('search', {
+    part: 'snippet', type: 'channel', maxResults: String(CHANNEL_SEARCH_MAX_RESULTS), q,
+    regionCode: 'JP', relevanceLanguage: 'ja', safeSearch: 'moderate',
+  }, key, { search: true });
+  const ids = (data.items ?? []).map((i) => i.id?.channelId).filter((id): id is string => !!id);
+  const list = ids.length ? await fetchChannelInfos(ids, key) : [];
+  cacheSet(cacheKey, list);
+  return list;
 }
 
 /** 名前・アイコンが古くなった登録チャンネルを再取得する（保存データを定期的に更新するため）． */
