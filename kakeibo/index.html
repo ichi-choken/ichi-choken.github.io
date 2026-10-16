@@ -2587,7 +2587,7 @@
       <div class="modal-title" style="margin-bottom:0;">💰 収入カテゴリ編集</div>
       <button type="button" class="modal-close" onclick="closeIncomeCatEditor()" aria-label="閉じる">✕</button>
     </div>
-    <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;">手入力フォームの「収入」選択時に表示されるカテゴリ一覧を管理します。</p>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;">手入力フォームの「収入」選択時に表示されるカテゴリ一覧を管理します。左端の ⠿ をドラッグすると並び替えできます。</p>
     <div id="income-cat-list-ui" style="margin-bottom:16px;"></div>
     <div style="display:flex;gap:8px;margin-bottom:4px;">
       <input type="text" id="income-cat-new-input" placeholder="新しいカテゴリ名"
@@ -4383,8 +4383,12 @@ function renderIncomeCatList() {
   }
   list.forEach((name, idx) => {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);';
+    row.className = 'income-cat-row';
+    row.dataset.idx = idx;
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);background:var(--surface);';
     row.innerHTML = `
+      <span class="income-cat-drag-handle" title="ドラッグで並び替え"
+        style="color:var(--text-dim);font-size:14px;cursor:grab;flex-shrink:0;padding:0 4px;touch-action:none;user-select:none;">⠿</span>
       <span style="flex:1;font-size:14px;">${escHtml(name)}</span>
       <button onclick="openEditIncomeCatModal(${idx})"
         style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:13px;padding:4px 10px;cursor:pointer;font-family:inherit;">✏️</button>
@@ -4392,6 +4396,133 @@ function renderIncomeCatList() {
         style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--danger);font-size:13px;padding:4px 10px;cursor:pointer;">削除</button>
     `;
     ul.appendChild(row);
+  });
+  initIncomeCatDragDrop(ul);
+}
+
+// ===== 収入カテゴリ 縦並びドラッグ＆ドロップ（大カテゴリ編集と同じ操作。PC mouse + スマホ touch） =====
+function initIncomeCatDragDrop(container) {
+  // 一覧の要素は再描画しても同じなので、イベント登録は最初の1回だけ（重複登録で何度も並び替えが走るのを防ぐ）
+  if (container._incomeDnDInit) return;
+  container._incomeDnDInit = true;
+  let dragging = null, ghost = null, offsetX = 0, offsetY = 0, lastTarget = null, didMove = false;
+
+  function getRows() { return [...container.querySelectorAll('.income-cat-row')]; }
+
+  function getRowUnder(cx, cy) {
+    return getRows().filter(c => c !== dragging).find(c => {
+      const r = c.getBoundingClientRect();
+      return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+    }) || null;
+  }
+
+  function startDrag(row, cx, cy) {
+    dragging = row;
+    didMove = false;
+    const rect = row.getBoundingClientRect();
+    offsetX = cx - rect.left; offsetY = cy - rect.top;
+    ghost = row.cloneNode(true);
+    ghost.style.cssText += ';position:fixed;pointer-events:none;opacity:0.8;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.5);transition:none;border-radius:8px;width:' + rect.width + 'px;';
+    document.body.appendChild(ghost);
+    moveGhost(cx, cy);
+    row.style.opacity = '0.35';
+    row.style.outline = '2px dashed var(--accent)';
+  }
+
+  function moveGhost(cx, cy) {
+    ghost.style.left = (cx - offsetX) + 'px';
+    ghost.style.top  = (cy - offsetY) + 'px';
+  }
+
+  // 移動中の行の中心が、相手の行の上半分なら前、下半分なら後ろに入れる
+  function insertBeforeTarget(target) {
+    const r = target.getBoundingClientRect();
+    const ghostCy = parseFloat(ghost.style.top) + ghost.offsetHeight / 2;
+    return ghostCy < r.top + r.height / 2;
+  }
+
+  function updateIndicator(target) {
+    if (lastTarget && lastTarget !== target) {
+      lastTarget.style.borderTop = ''; lastTarget.style.borderBottom = '1px solid var(--border)';
+    }
+    lastTarget = target;
+    if (!target) return;
+    if (insertBeforeTarget(target)) {
+      target.style.borderTop = '3px solid var(--accent)'; target.style.borderBottom = '1px solid var(--border)';
+    } else {
+      target.style.borderBottom = '3px solid var(--accent)'; target.style.borderTop = '';
+    }
+  }
+
+  function drop(cx, cy) {
+    const target = getRowUnder(cx, cy);
+    const before = (target && ghost) ? insertBeforeTarget(target) : false;
+    if (ghost) { ghost.remove(); ghost = null; }
+    if (lastTarget) { lastTarget.style.borderTop = ''; lastTarget.style.borderBottom = '1px solid var(--border)'; lastTarget = null; }
+    if (dragging) { dragging.style.opacity = ''; dragging.style.outline = ''; }
+    if (didMove && target && target !== dragging) {
+      const list = loadIncomeCategories();
+      const fromIdx = Number(dragging.dataset.idx);
+      const toIdx   = Number(target.dataset.idx);
+      if (list[fromIdx] !== undefined && list[toIdx] !== undefined) {
+        const [moved] = list.splice(fromIdx, 1);
+        let newTo = toIdx - (fromIdx < toIdx ? 1 : 0) + (before ? 0 : 1);
+        list.splice(Math.max(0, Math.min(list.length, newTo)), 0, moved);
+        saveIncomeCategories(list);
+        renderIncomeCatList();
+      }
+    }
+    dragging = null;
+  }
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    didMove = true;
+    moveGhost(e.clientX, e.clientY);
+    updateIndicator(getRowUnder(e.clientX, e.clientY));
+  });
+  document.addEventListener('mouseup', e => { if (dragging) drop(e.clientX, e.clientY); });
+
+  container.addEventListener('mousedown', e => {
+    const handle = e.target.closest('.income-cat-drag-handle');
+    if (!handle) return;
+    const row = handle.closest('.income-cat-row');
+    if (!row) return;
+    startDrag(row, e.clientX, e.clientY);
+    e.preventDefault();
+  });
+
+  container.addEventListener('touchstart', e => {
+    const handle = e.target.closest('.income-cat-drag-handle');
+    if (!handle) return;
+    const row = handle.closest('.income-cat-row');
+    if (!row) return;
+    const t = e.touches[0];
+    startDrag(row, t.clientX, t.clientY);
+    e.preventDefault();
+  }, { passive: false });
+
+  // ドラッグ中だけスクロールを止める
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    didMove = true;
+    const t = e.touches[0];
+    moveGhost(t.clientX, t.clientY);
+    updateIndicator(getRowUnder(t.clientX, t.clientY));
+    e.preventDefault();
+  }, { passive: false });
+
+  container.addEventListener('touchend', e => {
+    if (!dragging) return;
+    const t = e.changedTouches[0];
+    drop(t.clientX, t.clientY);
+  });
+  container.addEventListener('touchcancel', () => {
+    if (!dragging) return;
+    if (ghost) { ghost.remove(); ghost = null; }
+    if (lastTarget) { lastTarget.style.borderTop = ''; lastTarget.style.borderBottom = '1px solid var(--border)'; lastTarget = null; }
+    dragging.style.opacity = ''; dragging.style.outline = '';
+    dragging = null;
   });
 }
 
@@ -5384,7 +5515,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 16:01';
+const APP_BUILD = '2026-10-16 16:13';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
