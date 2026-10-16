@@ -5315,7 +5315,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 12:32';
+const APP_BUILD = '2026-10-16 12:33';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -7932,6 +7932,10 @@ function setStatType(type) {
 }
 
 function setGroupMode(mode) {
+  // カテゴリ別 ⇔ カテゴリ追跡 の切り替えでは、選んでいた大・中・小カテゴリを引き継ぐ
+  // （店別との行き来はカテゴリの意味が変わるのでリセット）
+  const carry = (currentGroupMode !== 'store' && mode !== 'store' && mode !== currentGroupMode)
+    ? _captureStatDrill() : null;
   currentGroupMode = mode;
   document.getElementById('group-mode-category').classList.toggle('active', mode === 'category');
   document.getElementById('group-mode-store').classList.toggle('active', mode === 'store');
@@ -7940,7 +7944,16 @@ function setGroupMode(mode) {
   // 店別モードでは円グラフも使えるが、ドリルダウンは不要なのでリセット
   drillMiddle = null;
   drillLarge = null;
+  _statSmallSel = null;
+  _pendingStatDrill = carry; // loadStats() の描画後にこの位置まで掘り直す
   loadStats();
+}
+
+// 今の掘り下げ位置 {large, middle, small}（一番上なら null）
+function _captureStatDrill() {
+  if (!drillLarge && !drillMiddle) return null;
+  const small = (_statSmallSel && drillMiddle && _statSmallSel.middle === drillMiddle) ? _statSmallSel.small : null;
+  return { large: drillLarge, middle: drillMiddle, small };
 }
 let currentChartMap = {};
 let currentChartTitle = '';
@@ -8576,7 +8589,10 @@ function _syncTrackSection() {
 
 async function loadStats() {
   // 追跡モードで掘り下げていた位置（期間変更などで最上位に戻っても、描画後にここまで掘り直す）
-  const keepDrill = currentGroupMode === 'track' ? _trackDrillState : null;
+  // カテゴリ別⇔追跡の切り替え直後は、切り替え前に選んでいた位置を使う
+  const keepDrill = _pendingStatDrill || (currentGroupMode === 'track' ? _trackDrillState : null);
+  _pendingStatDrill = null;
+  _statSmallSel = null;
   const loadSeq = ++_loadStatsSeq;
   drillMiddle = null;
   drillLarge = null;
@@ -10282,6 +10298,8 @@ function _syncTrackPathFromDrill() {
 //   loadStats() が最上位から描き直した後で _restoreTrackDrill() がこの位置まで掘り直す
 //   var にしているのは、初期化中に loadStats() から先に参照されても TDZ エラーにしないため
 var _trackDrillState = null;
+var _statSmallSel = null;    // 選択中の小カテゴリ {middle, small}（カテゴリ別・追跡の両モードで記録）
+var _pendingStatDrill = null; // モード切り替え後に掘り直す位置（setGroupMode → loadStats）
 var _trackRestoring = false;
 var _loadStatsSeq = 0;
 function _saveTrackDrill() {
@@ -10322,6 +10340,7 @@ function _doTrackAutoScroll() {
   const _dd = drillDown;
   drillDown = async function(label) {
     await _dd.apply(this, arguments);
+    _statSmallSel = null; // 階層が変わったら小カテゴリの選択は外れる
     if (currentGroupMode !== 'track') return;
     _syncTrackPathFromDrill();
     _saveTrackDrill();
@@ -10339,6 +10358,7 @@ function _doTrackAutoScroll() {
   const _small = renderSmallDrillReceipts;
   renderSmallDrillReceipts = async function(middle, small) {
     await _small.apply(this, arguments);
+    _statSmallSel = { middle, small }; // モード切り替え時に引き継ぐため記録
     if (currentGroupMode !== 'track') return;
     _syncTrackPathFromDrill();
     // 小カテゴリは1本だけ（別の小カテゴリを選んだら入れ替え）
@@ -10350,6 +10370,7 @@ function _doTrackAutoScroll() {
   const _up = _drillUpInner;
   _drillUpInner = async function() {
     await _up.apply(this, arguments);
+    _statSmallSel = null;
     if (currentGroupMode !== 'track') return;
     _syncTrackPathFromDrill();
     _saveTrackDrill();
