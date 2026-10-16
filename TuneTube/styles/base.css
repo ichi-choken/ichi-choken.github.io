@@ -61,7 +61,14 @@ body.can-install .install { display: inline-block; }
 
 /* ===== 一覧 ===== */
 main { padding-top: 16px; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
-.search-panel { margin-bottom: 12px; }
+/* 検索欄はスクロールしてもヘッダーの直下に常に表示する（--header-h は main.ts で実測） */
+.search-panel {
+  position: sticky; top: var(--header-h, 0px); z-index: 4;
+  background: var(--bg); margin: -16px 0 4px; padding-top: 12px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.search-panel[hidden] + .search-hint { display: none; }
+.search-hint { margin-bottom: 12px; }
 .search-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .search-row input { flex: 1 1 200px; }
 .hint { color: var(--sub); font-size: .85em; margin: 4px 0; }

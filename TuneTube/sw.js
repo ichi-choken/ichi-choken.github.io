@@ -1,6 +1,6 @@
 // TubeTune service worker
 // アプリ本体だけをキャッシュする．YouTube の API・動画・サムネイルはキャッシュせず，そのまま通信する．
-const CACHE_VERSION = 'tubetune-v3';
+const CACHE_VERSION = 'tubetune-v4';
 const APP_SHELL = [
   './', './index.html', './terms.html', './privacy.html', './manifest.webmanifest',
   './styles/base.css', './styles/senior.css', './styles/exam.css',

@@ -447,7 +447,19 @@ function bindEvents(): void {
   });
 }
 
+// 固定ヘッダーの高さを CSS 変数に反映（検索欄をその直下に固定するため）
+function trackHeaderHeight(): void {
+  const header = document.querySelector<HTMLElement>('.app-header');
+  if (!header) return;
+  const update = (): void => {
+    document.documentElement.style.setProperty('--header-h', `${header.offsetHeight}px`);
+  };
+  update();
+  new ResizeObserver(update).observe(header);
+}
+
 function init(): void {
+  trackHeaderHeight();
   purgeExpiredCache();
   setupPwa();
   bindEvents();
