@@ -1729,7 +1729,7 @@
 </div>
 
 <!-- 手入力：店舗名の追加確認モーダル（似ている店舗名があれば候補から選ばせる） -->
-<div class="modal-overlay" id="store-add-confirm-modal">
+<div class="modal-overlay" id="store-add-confirm-modal" style="z-index:260;">
   <div class="modal">
     <button type="button" class="modal-close" onclick="_finishStoreAddConfirm(false)" aria-label="閉じる">✕</button>
     <div class="modal-title" id="store-add-confirm-title">店舗名の追加確認</div>
@@ -2331,10 +2331,45 @@
   <div class="modal">
     <button type="button" class="modal-close" onclick="closeModal('receipt-edit-modal')" aria-label="閉じる">✕</button>
     <div class="modal-title">✏️ レシート情報を編集</div>
-    <!-- 通常：店舗名テキスト -->
+    <!-- 通常：店舗名（追加タブと同じ「一覧から選択 / 追加」） -->
     <div id="edit-store-text-row">
-      <div class="modal-label">店舗名</div>
-      <input type="text" id="edit-store-input" placeholder="店舗名">
+      <div class="modal-label" style="margin-bottom:4px;">店舗名</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <button type="button" id="edit-store-mode-select-btn" onclick="setStoreMode('select','edit')"
+          style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--btn-on-accent,#111);font-family:inherit;cursor:pointer;font-weight:700;">一覧から選択</button>
+        <button type="button" id="edit-store-mode-input-btn" onclick="setStoreMode('input','edit')"
+          style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;cursor:pointer;">追加</button>
+      </div>
+      <!-- 選択モード -->
+      <div id="edit-store-select-wrap" style="position:relative;">
+        <div style="display:flex;align-items:center;
+                 background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
+          <input type="text" id="edit-store-search-input" placeholder="店舗を選択（文字入力で候補表示）"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            enterkeyhint="done" role="combobox" aria-autocomplete="list" aria-controls="edit-store-select-list"
+            onfocus="openStoreDropdown('edit')" oninput="onStoreSearchInput('edit')" onkeydown="onStoreSearchKeydown(event,'edit')" onblur="onStoreSearchBlur('edit')"
+            style="flex:1;min-width:0;background:transparent;border:none;outline:none;
+                   padding:10px 12px;color:var(--text);font-size:16px;font-family:inherit;">
+          <span id="edit-store-select-arrow" onmousedown="event.preventDefault()" onclick="toggleStoreDropdown('edit')"
+            style="flex-shrink:0;padding:10px 12px;font-size:12px;color:var(--text-dim);cursor:pointer;">▼</span>
+        </div>
+        <div id="edit-store-select-list" style="display:none;position:absolute;top:100%;left:0;right:0;
+             background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+             margin-top:4px;z-index:102;overflow-y:auto;max-height:200px;">
+        </div>
+      </div>
+      <!-- 追加モード（新しい店舗名を入力して登録する） -->
+      <div id="edit-store-input-wrap" style="display:none;">
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="edit-store-text" placeholder="追加する店舗名を入力"
+            enterkeyhint="done"
+            onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();confirmStoreAdd('edit');}"
+            style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:16px;outline:none;">
+          <button type="button" onclick="confirmStoreAdd('edit')"
+            style="flex-shrink:0;padding:0 14px;font-size:13px;border-radius:6px;border:1px solid var(--accent);background:none;color:var(--accent);font-family:inherit;cursor:pointer;font-weight:700;">追加</button>
+        </div>
+      </div>
+      <div id="edit-store-add-msg" style="display:none;font-size:12px;margin-top:4px;"></div>
     </div>
     <!-- 収入：カテゴリ選択 -->
     <div id="edit-income-cat-row" style="display:none;">
@@ -5315,7 +5350,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 12:43';
+const APP_BUILD = '2026-10-16 13:49';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6457,7 +6492,7 @@ let previewEditItemIndex = null; // null=新規追加, 数値=編集中index
 // 店舗・日付を編集
 function openPreviewReceiptEdit() {
   pauseAutoSave();
-  document.getElementById('edit-store-input').value = parsedData.store || '';
+  initStorePicker('edit', parsedData.store || '');
   document.getElementById('edit-date-input').value = parsedData.date || '';
   document.getElementById('edit-time-input').value = parsedData.time || '';
   // 保存ボタンをプレビュー用に差し替え
@@ -7374,7 +7409,7 @@ var openReceiptEditModal = function() {
     const cats = loadIncomeCategories();
     sel.innerHTML = cats.map(c => `<option value="${escHtml(c)}"${c === currentRecord.store ? ' selected' : ''}>${escHtml(c)}</option>`).join('');
   } else {
-    document.getElementById('edit-store-input').value = currentRecord.store || '';
+    initStorePicker('edit', currentRecord.store || '');
   }
   document.getElementById('edit-date-input').value = currentRecord.date || '';
   document.getElementById('edit-time-input').value = currentRecord.time || '';
@@ -7390,24 +7425,45 @@ async function saveReceiptEdit() {
   if (isIncome) {
     newStore = document.getElementById('edit-income-cat-select').value;
   } else {
-    newStore = document.getElementById('edit-store-input').value.trim();
+    // 「追加」欄に確定前の店舗名があれば、似ている店舗名の確認をしてから保存する
+    if (_spSt('edit').mode === 'input') {
+      const txt = document.getElementById('edit-store-text');
+      if (txt && txt.value.trim()) {
+        txt.blur();
+        const res = await _resolveStoreToAdd(txt.value);
+        if (res.status === 'busy') return;
+        if (res.status === 'cancel') { _showStoreAddMsg('保存を中止しました（店舗名を確認してください）', true, 'edit'); return; }
+        if (res.status === 'invalid') { _showStoreAddMsg(`「${res.name}」は店舗名として登録できません`, true, 'edit'); return; }
+        if (res.status === 'ok') _applyAddedStore(res.name, 'edit');
+      }
+    }
+    newStore = _spSt('edit').selected;
   }
   const newDate  = document.getElementById('edit-date-input').value;
   const newTime  = document.getElementById('edit-time-input').value || null;
+  // 店舗名が変わったときだけ、ブランド名と店ID も新しい店名に合わせる（空にしたら店舗なし）
+  const target = isPreview ? parsedData : currentRecord;
+  const storeChanged = !isIncome && (newStore || '') !== (target.store || '');
 
   if (isPreview) {
     // parsedData を直接更新
-    if (newStore) {
-      parsedData.store = newStore;
-      // ブランド未判定なら、入力した店名から登録済みブランドを引く（表記ゆれも吸収）
-      if (!parsedData.store_brand) parsedData.store_brand = cleanStoreBrand(newStore);
+    if (storeChanged) {
+      parsedData.store = newStore || null;
+      parsedData.store_brand = newStore ? cleanStoreBrand(newStore) : null;
     }
     if (newDate)  parsedData.date = newDate;
     parsedData.time = newTime;
     closeModal('receipt-edit-modal');
     renderResult(parsedData);
   } else {
-    currentRecord.store = newStore || currentRecord.store;
+    if (isIncome) {
+      currentRecord.store = newStore || currentRecord.store;
+    } else if (storeChanged) {
+      currentRecord.store = newStore || null;
+      const brand = newStore ? cleanStoreBrand(newStore) : null;
+      currentRecord.store_brand = brand;
+      currentRecord.store_brand_id = brand ? autoRegisterStoreBrand(brand) : null;
+    }
     currentRecord.date  = newDate  || currentRecord.date;
     currentRecord.time  = newTime;
     await dbPut('receipts', currentRecord);
@@ -12148,7 +12204,7 @@ async function saveManualReceipt() {
     return;
   }
   // 「追加」欄に確定前の店舗名があれば、似ている店舗名の確認をしてから保存する
-  if (_manualEntryType !== 'income' && _storeMode === 'input') {
+  if (_manualEntryType !== 'income' && _spSt('manual').mode === 'input') {
     const txt = document.getElementById('manual-store-text');
     if (txt && txt.value.trim()) {
       txt.blur();
@@ -12319,10 +12375,10 @@ function clearManualEntry(opts = {}) {
   manualItems = [];
   document.getElementById('manual-store').value = '手入力';
   // 店舗選択UIをリセット
-  _storeSelected = '';
+  _spSt('manual').selected = _spSt('manual').committed = '';
   const storeSearch = document.getElementById('store-search-input');
   if (storeSearch) storeSearch.value = '';
-  document.querySelectorAll('.store-select-opt').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('#store-select-list .store-select-opt').forEach(el => el.classList.remove('active'));
   const storeTxt = document.getElementById('manual-store-text');
   if (storeTxt) storeTxt.value = '';
   document.getElementById('manual-time').value = '';
@@ -12377,18 +12433,56 @@ function manualDateShift(delta) {
   input.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
-// ===== 手入力：店舗名 =====
-let _storeMode = 'select'; // 'select' | 'input'
-let _storeSelected = '';    // 一覧から選択モードで確定している店舗名（未選択は空）
+// ===== 店舗名の選択UI（追加タブの手入力・レシート情報の編集で共用） =====
+// key: 'manual'（追加タブ）| 'edit'（レシート情報を編集）
+//   要素IDは `${prefix}-select-wrap` `${prefix}-search-input` などで、prefix 以外の作りは同じ
+const _STORE_PICKERS = {
+  manual: { prefix: 'store',      textId: 'manual-store-text', msgId: 'store-add-msg',      hiddenId: 'manual-store' },
+  edit:   { prefix: 'edit-store', textId: 'edit-store-text',   msgId: 'edit-store-add-msg', hiddenId: null },
+};
+// mode: 'select' | 'input'（追加）、selected: 今の入力欄の確定値、committed: 最後に確定した店名
+const _storePickerState = {
+  manual: { mode: 'select', selected: '', committed: '' },
+  edit:   { mode: 'select', selected: '', committed: '' },
+};
+function _spCfg(key) { return _STORE_PICKERS[key] || _STORE_PICKERS.manual; }
+function _spSt(key)  { return _storePickerState[key] || _storePickerState.manual; }
+function _spEl(key, part) { return document.getElementById(`${_spCfg(key).prefix}-${part}`); }
 
-function setStoreMode(mode) {
-  _storeMode = mode;
+// 追加タブの hidden（manual-store）に今の店名を同期する（edit には hidden がない）
+function _spSyncHidden(key) {
+  const cfg = _spCfg(key);
+  if (!cfg.hiddenId) return;
+  const st = _spSt(key);
+  let v = st.selected;
+  if (st.mode !== 'select') {
+    const t = document.getElementById(cfg.textId);
+    v = t ? t.value.trim() : '';
+  }
+  document.getElementById(cfg.hiddenId).value = v || '手入力';
+}
+
+// 店名を指定して初期化する（編集モーダルを開くときなど）。一覧にない店名（支店名つき等）もそのまま選択済みにする
+function initStorePicker(key, name) {
+  const st = _spSt(key);
+  st.selected = st.committed = name || '';
+  const input = _spEl(key, 'search-input');
+  if (input) input.value = st.selected;
+  const txt = document.getElementById(_spCfg(key).textId);
+  if (txt) txt.value = '';
+  closeStoreDropdown(key);
+  setStoreMode('select', key);
+}
+
+function setStoreMode(mode, key = 'manual') {
+  const st = _spSt(key);
+  st.mode = mode;
   const accentTextColor = document.body.classList.contains('theme-light') ? '#fff' : '#111';
   const isSelect = mode === 'select';
-  document.getElementById('store-select-wrap').style.display = isSelect ? 'block' : 'none';
-  document.getElementById('store-input-wrap').style.display = isSelect ? 'none' : 'block';
-  const selBtn = document.getElementById('store-mode-select-btn');
-  const inpBtn = document.getElementById('store-mode-input-btn');
+  _spEl(key, 'select-wrap').style.display = isSelect ? 'block' : 'none';
+  _spEl(key, 'input-wrap').style.display = isSelect ? 'none' : 'block';
+  const selBtn = _spEl(key, 'mode-select-btn');
+  const inpBtn = _spEl(key, 'mode-input-btn');
   if (selBtn) {
     selBtn.style.background    = isSelect ? 'var(--accent)' : 'var(--surface2)';
     selBtn.style.color         = isSelect ? accentTextColor : 'var(--text-dim)';
@@ -12401,14 +12495,8 @@ function setStoreMode(mode) {
     inpBtn.style.borderColor   = isSelect ? 'var(--border)' : 'var(--accent)';
     inpBtn.style.fontWeight    = isSelect ? '400' : '700';
   }
-  if (typeof _showStoreAddMsg === 'function') _showStoreAddMsg('');
-  // hidden に値を同期
-  if (isSelect) {
-    document.getElementById('manual-store').value = _storeSelected || '手入力';
-  } else {
-    const txt = document.getElementById('manual-store-text');
-    document.getElementById('manual-store').value = (txt && txt.value.trim()) ? txt.value.trim() : '手入力';
-  }
+  _showStoreAddMsg('', false, key);
+  _spSyncHidden(key);
 }
 
 // 文字の揺れ（ひらがな/カタカナ・全角/半角・大小文字・空白）を吸収して比較する
@@ -12421,8 +12509,8 @@ function _normStoreText(t) {
 }
 
 // 一覧の位置を決める。スマホでキーボードが出ている間は visualViewport の高さで判定する
-function _positionStoreList() {
-  const list = document.getElementById('store-select-list');
+function _positionStoreList(key = 'manual') {
+  const list = _spEl(key, 'select-list');
   const trigger = list && list.previousElementSibling;
   if (!list || !trigger) return;
   const rect = trigger.getBoundingClientRect();
@@ -12441,60 +12529,65 @@ function _positionStoreList() {
   }
 }
 
-function openStoreDropdown() {
-  const list = document.getElementById('store-select-list');
-  const input = document.getElementById('store-search-input');
+function openStoreDropdown(key = 'manual') {
+  const list = _spEl(key, 'select-list');
+  const input = _spEl(key, 'search-input');
   // 確定済みの店名が入っているときは全件を出す（打ち始めたら絞り込む）
-  const q = (input && input.value.trim() !== _storeSelected) ? input.value : '';
-  rebuildStoreDropdown(q);
-  _positionStoreList();
+  const q = (input && input.value.trim() !== _spSt(key).selected) ? input.value : '';
+  rebuildStoreDropdown(q, key);
+  _positionStoreList(key);
   list.style.display = 'block';
-  document.getElementById('store-select-arrow').textContent = '▲';
+  _spEl(key, 'select-arrow').textContent = '▲';
   // スマホでキーボードが出た後に位置を取り直す
-  setTimeout(_positionStoreList, 350);
+  setTimeout(() => _positionStoreList(key), 350);
 }
 
-function closeStoreDropdown() {
-  const list = document.getElementById('store-select-list');
+function closeStoreDropdown(key = 'manual') {
+  const list = _spEl(key, 'select-list');
   if (list) list.style.display = 'none';
-  const arrow = document.getElementById('store-select-arrow');
+  const arrow = _spEl(key, 'select-arrow');
   if (arrow) arrow.textContent = '▼';
 }
 
-function toggleStoreDropdown() {
-  const list = document.getElementById('store-select-list');
+function toggleStoreDropdown(key = 'manual') {
+  const list = _spEl(key, 'select-list');
   const isHidden = list.style.display === 'none' || list.style.display === '';
   if (isHidden) {
-    openStoreDropdown();
-    const input = document.getElementById('store-search-input');
+    openStoreDropdown(key);
+    const input = _spEl(key, 'search-input');
     if (input) input.focus();
   } else {
-    closeStoreDropdown();
+    closeStoreDropdown(key);
   }
 }
 
-function onStoreSearchInput() {
-  const input = document.getElementById('store-search-input');
+function onStoreSearchInput(key = 'manual') {
+  const input = _spEl(key, 'search-input');
   const q = input.value;
-  // 入力が確定済みの店名から変わったら未選択扱いに戻す（完全一致なら自動で確定）
+  const st = _spSt(key);
+  // 入力が確定済みの店名から変わったら未確定に戻す（登録済み店名と完全一致なら自動で確定）
   const exact = loadStoreDefFromStorage().find(s => _normStoreText(s.name) === _normStoreText(q) && q.trim());
-  _storeSelected = exact ? exact.name : '';
-  document.getElementById('manual-store').value = _storeSelected || '手入力';
-  rebuildStoreDropdown(q);
-  _positionStoreList();
-  document.getElementById('store-select-list').style.display = 'block';
-  document.getElementById('store-select-arrow').textContent = '▲';
+  st.selected = exact ? exact.name : '';
+  _spSyncHidden(key);
+  rebuildStoreDropdown(q, key);
+  _positionStoreList(key);
+  _spEl(key, 'select-list').style.display = 'block';
+  _spEl(key, 'select-arrow').textContent = '▲';
 }
 
-function onStoreSearchKeydown(e) {
-  const list = document.getElementById('store-select-list');
+function onStoreSearchKeydown(e, key = 'manual') {
+  const list = _spEl(key, 'select-list');
   const opts = [...list.querySelectorAll('.store-select-opt')];
-  if (e.key === 'Escape') { closeStoreDropdown(); return; }
+  if (e.key === 'Escape') {
+    // 一覧が開いていれば一覧だけ閉じる（編集モーダルごと閉じないようにする）
+    if (list.style.display !== 'none') { e.stopPropagation(); closeStoreDropdown(key); }
+    return;
+  }
   if (!opts.length) return;
   let cur = opts.findIndex(el => el.classList.contains('kbd-focus'));
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
-    if (list.style.display === 'none') openStoreDropdown();
+    if (list.style.display === 'none') openStoreDropdown(key);
     cur = e.key === 'ArrowDown' ? Math.min(opts.length - 1, cur + 1) : Math.max(0, cur - 1);
     opts.forEach((el, i) => el.classList.toggle('kbd-focus', i === cur));
     opts[cur].scrollIntoView({ block: 'nearest' });
@@ -12503,29 +12596,40 @@ function onStoreSearchKeydown(e) {
     if (e.isComposing || e.keyCode === 229) return;
     e.preventDefault();
     const pick = opts[cur >= 0 ? cur : 0];
-    if (pick) chooseStore(pick.dataset.name);
+    if (pick) chooseStore(pick.dataset.name, key);
     e.target.blur();
   }
 }
 
-function onStoreSearchBlur() {
+function onStoreSearchBlur(key = 'manual') {
   // 候補タップ（click）より先に blur が来るので、少し待ってから後始末する
   setTimeout(() => {
-    const input = document.getElementById('store-search-input');
+    const input = _spEl(key, 'search-input');
     if (document.activeElement === input) return;
-    closeStoreDropdown();
-    // 候補から選ばれなかった入力は消して、未選択（null）であることを見た目でも示す
-    if (input && input.value !== _storeSelected) input.value = _storeSelected;
+    closeStoreDropdown(key);
+    const st = _spSt(key);
+    if (!input) return;
+    if (!input.value.trim()) {
+      // 空にしたら未選択にする
+      st.selected = st.committed = '';
+    } else if (input.value !== st.selected || !st.selected) {
+      // 候補から選ばれなかった入力は、最後に確定していた店名に戻す
+      st.selected = st.committed;
+    }
+    input.value = st.selected;
+    _spSyncHidden(key);
   }, 200);
 }
 
-function chooseStore(name) {
-  _storeSelected = name;
-  const input = document.getElementById('store-search-input');
+function chooseStore(name, key = 'manual') {
+  const st = _spSt(key);
+  st.selected = st.committed = name;
+  const input = _spEl(key, 'search-input');
   if (input) input.value = name;
-  closeStoreDropdown();
-  document.getElementById('manual-store').value = name;
-  document.querySelectorAll('.store-select-opt').forEach(el => {
+  closeStoreDropdown(key);
+  _spSyncHidden(key);
+  const list = _spEl(key, 'select-list');
+  if (list) list.querySelectorAll('.store-select-opt').forEach(el => {
     el.classList.toggle('active', el.dataset.name === name);
   });
 }
@@ -12653,6 +12757,18 @@ function _finishStoreAddConfirm(ok) {
   if (r) r(result);
 }
 
+// モーダルが閉じる（戻る操作の popstate 処理が終わる）まで待つ。最大 timeoutMs
+function _waitModalClosed(id, timeoutMs = 1000) {
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    (function poll() {
+      const el = document.getElementById(id);
+      if (!el || !el.classList.contains('open') || Date.now() - t0 > timeoutMs) return resolve();
+      setTimeout(poll, 30);
+    })();
+  });
+}
+
 // 「追加」欄の店舗名を確認して確定する
 // 戻り値の status: 'ok'（name に確定名）/ 'cancel' / 'empty' / 'invalid'（店名にならない語）/ 'busy'
 async function _resolveStoreToAdd(rawName) {
@@ -12666,6 +12782,7 @@ async function _resolveStoreToAdd(rawName) {
   const exist = findStoreEntry(name);
   if (exist) return { status: 'ok', name: exist.name, existed: true };
   const ans = await _askStoreAddConfirm(name, findSimilarStores(name));
+  await _waitModalClosed('store-add-confirm-modal');
   if (!ans) return { status: 'cancel' };
   if (ans.type === 'existing') return { status: 'ok', name: ans.name, existed: true };
   autoRegisterStoreBrand(name);
@@ -12673,16 +12790,16 @@ async function _resolveStoreToAdd(rawName) {
 }
 
 // 確定した店舗名を「一覧から選択」側で選んだ状態にする
-function _applyAddedStore(name) {
-  const txt = document.getElementById('manual-store-text');
+function _applyAddedStore(name, key = 'manual') {
+  const txt = document.getElementById(_spCfg(key).textId);
   if (txt) txt.value = '';
-  setStoreMode('select');
-  rebuildStoreDropdown();
-  chooseStore(name);
+  setStoreMode('select', key);
+  rebuildStoreDropdown('', key);
+  chooseStore(name, key);
 }
 
-function _showStoreAddMsg(text, isError) {
-  const el = document.getElementById('store-add-msg');
+function _showStoreAddMsg(text, isError, key = 'manual') {
+  const el = document.getElementById(_spCfg(key).msgId);
   if (!el) return;
   el.textContent = text || '';
   el.style.color = isError ? 'var(--danger)' : 'var(--accent)';
@@ -12690,22 +12807,22 @@ function _showStoreAddMsg(text, isError) {
 }
 
 // 「追加」ボタン（または入力欄で Enter）
-async function confirmStoreAdd() {
-  const txt = document.getElementById('manual-store-text');
+async function confirmStoreAdd(key = 'manual') {
+  const txt = document.getElementById(_spCfg(key).textId);
   if (txt) txt.blur(); // スマホのキーボードを閉じてから確認を出す
-  _showStoreAddMsg('');
+  _showStoreAddMsg('', false, key);
   const res = await _resolveStoreToAdd(txt ? txt.value : '');
-  if (res.status === 'empty')   { _showStoreAddMsg('店舗名を入力してください', true); return; }
-  if (res.status === 'invalid') { _showStoreAddMsg(`「${res.name}」は店舗名として登録できません`, true); return; }
+  if (res.status === 'empty')   { _showStoreAddMsg('店舗名を入力してください', true, key); return; }
+  if (res.status === 'invalid') { _showStoreAddMsg(`「${res.name}」は店舗名として登録できません`, true, key); return; }
   if (res.status !== 'ok') return;
-  _applyAddedStore(res.name);
-  showManualStatus('success', res.existed
-    ? `登録済みの「${res.name}」を選択しました`
-    : `「${res.name}」を店舗一覧に追加しました`);
+  _applyAddedStore(res.name, key);
+  const done = res.existed ? `登録済みの「${res.name}」を選択しました` : `「${res.name}」を店舗一覧に追加しました`;
+  if (key === 'manual') showManualStatus('success', done);
+  else _showStoreAddMsg(done, false, key); // 編集モーダルは欄の下に表示
 }
 
-function rebuildStoreDropdown(query) {
-  const list = document.getElementById('store-select-list');
+function rebuildStoreDropdown(query, key = 'manual') {
+  const list = _spEl(key, 'select-list');
   if (!list) return;
   const stores = loadStoreDefFromStorage();
   list.innerHTML = '';
@@ -12728,24 +12845,27 @@ function rebuildStoreDropdown(query) {
   }
   if (hits.length === 0) { msg('該当する店舗がありません（「追加」で新しい店名を登録できます）'); return; }
 
+  const selected = _spSt(key).selected;
   hits.forEach(s => {
     const div = document.createElement('div');
-    div.className = 'manual-cat-opt store-select-opt' + (s.name === _storeSelected ? ' active' : '');
+    div.className = 'manual-cat-opt store-select-opt' + (s.name === selected ? ' active' : '');
     div.dataset.name = s.name;
     div.textContent = s.name;
     // スマホでタップ時に入力欄の blur で一覧が先に消えないようにする
     div.addEventListener('mousedown', e => e.preventDefault());
-    div.onclick = () => chooseStore(s.name);
+    div.onclick = () => chooseStore(s.name, key);
     list.appendChild(div);
   });
 }
 
 // 一覧の外をタップしたら閉じる
 document.addEventListener('pointerdown', e => {
-  const wrap = document.getElementById('store-select-wrap');
-  const list = document.getElementById('store-select-list');
-  if (!wrap || !list || list.style.display === 'none') return;
-  if (!wrap.contains(e.target)) closeStoreDropdown();
+  Object.keys(_STORE_PICKERS).forEach(key => {
+    const wrap = _spEl(key, 'select-wrap');
+    const list = _spEl(key, 'select-list');
+    if (!wrap || !list || list.style.display === 'none') return;
+    if (!wrap.contains(e.target)) closeStoreDropdown(key);
+  });
 });
 
 function showManualStatus(type, msg) {
