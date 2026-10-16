@@ -1954,10 +1954,11 @@
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          <input type="number" id="manual-item-price" placeholder="合計金額" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
-          <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">円</span>
+          <!-- 左に個数、右に金額 -->
           <input type="number" id="manual-item-qty" value="1" min="1" step="1" inputmode="numeric" aria-label="個数" style="width:56px;flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 6px;color:var(--text);font-size:14px;outline:none;text-align:center;">
           <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">個</span>
+          <input type="number" id="manual-item-price" placeholder="金額" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
+          <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">円</span>
         </div>
       </div>
 
@@ -5350,7 +5351,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 13:49';
+const APP_BUILD = '2026-10-16 14:17';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
