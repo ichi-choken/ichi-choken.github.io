@@ -1560,6 +1560,10 @@
     background: rgba(2,136,209,0.10);
   }
   .cal-cell.empty { background: transparent; border-color: transparent; }
+  /* 商品名検索中：該当する日を強調し、該当しない日は薄くする */
+  .cal-cell.search-hit { background: rgba(200,255,87,0.16); border-color: var(--accent); }
+  body.theme-light .cal-cell.search-hit { background: #e8f4ef; }
+  .cal-cell.search-miss { opacity: .35; }
   .cal-day-num {
     font-size: 11px;
     font-weight: 500;
@@ -2033,13 +2037,7 @@
         <button class="view-toggle-btn" id="view-btn-list" onclick="switchHistoryView('list')">☰ リスト</button>
       </div>
 
-      <!-- リストビュー本体 -->
-      <div id="history-list-body" style="display:none;">
-        <div class="history-sort-bar">
-        <button class="sort-btn active" id="sort-added" onclick="setHistorySort('added')">追加順</button>
-        <button class="sort-btn" id="sort-date-desc" onclick="setHistorySort('date-desc')">日付新しい順</button>
-        <button class="sort-btn" id="sort-date-asc" onclick="setHistorySort('date-asc')">日付古い順</button>
-      </div>
+      <!-- 商品名検索（カレンダー・リスト共通） -->
       <div class="history-search-bar">
         <span style="color:var(--text-dim);font-size:14px;">🔍</span>
         <input type="text" id="history-search-input" placeholder="商品名で検索…"
@@ -2047,6 +2045,14 @@
         <button class="history-search-clear" id="history-search-clear" onclick="clearHistorySearch()">✕</button>
       </div>
       <div class="history-search-match" id="history-search-match"></div>
+
+      <!-- リストビュー本体 -->
+      <div id="history-list-body" style="display:none;">
+        <div class="history-sort-bar">
+        <button class="sort-btn active" id="sort-added" onclick="setHistorySort('added')">追加順</button>
+        <button class="sort-btn" id="sort-date-desc" onclick="setHistorySort('date-desc')">日付新しい順</button>
+        <button class="sort-btn" id="sort-date-asc" onclick="setHistorySort('date-asc')">日付古い順</button>
+      </div>
 
       <!-- 一括再カテゴライズ -->
       <div id="bulk-recat-bar" style="margin-bottom:10px;">
@@ -5309,7 +5315,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 12:23';
+const APP_BUILD = '2026-10-16 12:28';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6540,14 +6546,20 @@ function onHistorySearchInput() {
   const val = document.getElementById('history-search-input').value;
   currentHistorySearch = val;
   document.getElementById('history-search-clear').style.display = val ? 'block' : 'none';
-  loadHistory();
+  _refreshHistorySearchView();
 }
 
 function clearHistorySearch() {
   currentHistorySearch = '';
   document.getElementById('history-search-input').value = '';
   document.getElementById('history-search-clear').style.display = 'none';
-  loadHistory();
+  _refreshHistorySearchView();
+}
+
+// 検索語が変わったら、表示中のビュー（カレンダー／リスト）を描き直す
+function _refreshHistorySearchView() {
+  if (_historyView === 'cal') renderCalendar();
+  else loadHistory();
 }
 
 function setHistorySort(sort) {
@@ -6856,6 +6868,28 @@ function renderCalendar() {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${pad2(today.getMonth()+1)}-${pad2(today.getDate())}`;
 
+  // 商品名検索：該当商品を含むレシートの日付を集める（リスト表示と同じ一致条件）
+  const searchQuery = (currentHistorySearch || '').trim();
+  const sq = searchQuery.toLowerCase();
+  const hitDates = new Set();
+  const matchEl = document.getElementById('history-search-match');
+  if (sq) {
+    let hitItems = 0, hitReceipts = 0;
+    _calRecords.forEach(r => {
+      const n = (r.items || []).filter(it => (it.name || '').toLowerCase().includes(sq)).length;
+      if (!n) return;
+      hitItems += n; hitReceipts++;
+      if (r.date) hitDates.add(r.date);
+    });
+    const monthDays = [...hitDates].filter(d => d.startsWith(monthStr)).length;
+    if (matchEl) {
+      matchEl.textContent = `「${searchQuery}」を含む商品：${hitItems}件 / ${hitReceipts}レシート（この月：${monthDays}日）`;
+      matchEl.style.display = 'block';
+    }
+  } else if (matchEl) {
+    matchEl.style.display = 'none';
+  }
+
   const grid = document.getElementById('cal-grid');
   grid.innerHTML = '';
 
@@ -6890,7 +6924,8 @@ function renderCalendar() {
     cell.className = 'cal-cell' +
       (records.length > 0 ? ' has-data' : '') +
       (dateStr === todayStr ? ' today' : '') +
-      (dateStr === _calSelectedDate ? ' selected' : '');
+      (dateStr === _calSelectedDate ? ' selected' : '') +
+      (sq && records.length > 0 ? (hitDates.has(dateStr) ? ' search-hit' : ' search-miss') : '');
     cell.dataset.date = dateStr;
 
     const numClass = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
