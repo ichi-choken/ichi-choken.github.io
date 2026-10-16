@@ -280,14 +280,16 @@
     line-height: 1.25;
     color: var(--text-dim);
     text-align: right;
-    white-space: pre-line;
+    white-space: pre; /* 「◯年◯月◯日」「◯◯:◯◯更新」の2行で固定し、途中で折り返さない */
   }
 
   .settings-btn {
+    flex-shrink: 0;
+    white-space: nowrap; /* スマホの狭い画面でも「⚙ 設定」を改行しない */
     background: none;
     border: 1px solid var(--border);
     color: var(--text-dim);
-    padding: 6px 12px;
+    padding: 6px 10px;
     border-radius: var(--radius);
     cursor: pointer;
     font-size: 13px;
@@ -5382,7 +5384,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 15:25';
+const APP_BUILD = '2026-10-16 16:01';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
