@@ -5315,7 +5315,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 12:38';
+const APP_BUILD = '2026-10-16 12:43';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6583,8 +6583,8 @@ function buildReceiptSearcher(query) {
       const g = n ? _builtinStoreGroupOf(n) : -1;
       if (g >= 0) names.push(...BUILTIN_STORE_GROUPS[g]);
     });
-    if (names.some(has)) fields.push(`店名：${storeDisplayName(r)}`);
-    else if (!r.store && has(storeDisplayName(r))) fields.push(storeDisplayName(r)); // 収入カテゴリ名
+    // 店名（収入はカテゴリ名）の一致は、一覧の太字の店名にマーカーを付けて示す（fields には入れない）
+    const storeHit = names.some(has) || (!r.store && has(storeDisplayName(r)));
     // 日付・時刻（「2026-10-16」「2026/10/16」「10月16日」のどれでも）
     if (r.date) {
       const [y, m, d] = r.date.split('-').map(Number);
@@ -6598,8 +6598,8 @@ function buildReceiptSearcher(query) {
     // 商品：商品名・中カテゴリ・小カテゴリ・金額
     const items = (r.items || []).filter(it =>
       has(it.name) || has(resolveMiddleName(it)) || has(it.middle_category) || has(it.small_category) || has(it.price));
-    if (fields.length === 0 && items.length === 0) return null;
-    return { fields, items };
+    if (!storeHit && fields.length === 0 && items.length === 0) return null;
+    return { storeHit, fields, items };
   };
 }
 
@@ -6706,7 +6706,7 @@ async function loadHistory() {
     if (searcher) {
       displayRecords = records.map(r => {
         const m = searcher(r);
-        return m ? { ...r, _matchedItems: m.items, _matchedFields: m.fields } : null;
+        return m ? { ...r, _matchedItems: m.items, _matchedFields: m.fields, _storeHit: m.storeHit } : null;
       }).filter(Boolean);
       const itemCount = displayRecords.reduce((s, r) => s + r._matchedItems.length, 0);
       matchEl.textContent = `「${searchQuery}」に一致：${displayRecords.length}レシート（うち商品 ${itemCount}件）`;
@@ -6731,8 +6731,9 @@ async function loadHistory() {
       li.className = 'history-item';
       li.dataset.id = r.id;
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
-      // 検索時は一致した項目（店名・日付・金額など）と商品名を表示
-      const matchedItemsHtml = searchQuery && r._matchedItems
+      // 検索時は一致した項目（日付・金額など）と商品名を表示（店名の一致は上の太字にマーカー）
+      const matchedItemsHtml = searchQuery && r._matchedItems &&
+        ((r._matchedFields || []).length > 0 || r._matchedItems.length > 0)
         ? `<div style="font-size:11px;color:var(--text-dim);margin-top:3px;line-height:1.6;">
             ${(r._matchedFields || []).map(f =>
               `<span style="margin-right:6px;">• ${highlightText(escHtml(f), escHtml(searchQuery))}</span>`
@@ -6743,7 +6744,13 @@ async function loadHistory() {
         : '';
       li.innerHTML = `
         <div class="history-left">
-          <div class="history-store">${escHtml(storeDisplayName(r))}</div>
+          <div class="history-store">${(() => {
+            const nameHtml = escHtml(storeDisplayName(r));
+            if (!searchQuery || !r._storeHit) return nameHtml;
+            // 検索語がそのまま含まれていればその部分、別表記・かなカナ違いでの一致なら店名全体にマーカー
+            const marked = highlightText(nameHtml, escHtml(searchQuery));
+            return marked !== nameHtml ? marked : `<span class="history-item-highlight">${nameHtml}</span>`;
+          })()}</div>
           ${(() => {
             const brand = (r.store_brand || '').trim();
             const store = (r.store || '').trim();
