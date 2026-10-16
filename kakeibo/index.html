@@ -329,8 +329,6 @@
   input:focus { border-color: var(--accent); }
 
   /* 日付・時刻入力のアイコン：既定の黒く小さいアイコンをアクセント色の大きいアイコンに差し替える（入力欄の高さは変えない） */
-  body { color-scheme: dark; }            /* ブラウザの日付ピッカー本体もダーク表示にする */
-  body.theme-light { color-scheme: light; }
   input[type="date"]::-webkit-calendar-picker-indicator,
   input[type="month"]::-webkit-calendar-picker-indicator,
   input[type="time"]::-webkit-calendar-picker-indicator {
@@ -5384,7 +5382,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 15:23';
+const APP_BUILD = '2026-10-16 15:25';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
