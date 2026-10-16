@@ -120,6 +120,11 @@
   body.theme-light .manual-small-opt.active { color: var(--accent); }
   .store-select-opt.kbd-focus { outline:1px solid var(--accent); outline-offset:-1px; }
   body.theme-light .store-select-opt.active { color: var(--accent); background: #e8f4ef; }
+  /* 店舗名追加の確認モーダル：候補の一覧選択 */
+  .store-cand-opt { display:flex; align-items:center; gap:10px; margin:0; }
+  .store-cand-opt input[type="radio"] { accent-color: var(--accent); width:18px; height:18px; margin:0; flex-shrink:0; }
+  .store-cand-opt .store-cand-sub { font-size:11px; color:var(--text-dim); font-weight:400; margin-left:auto; flex-shrink:0; }
+  body.theme-light .store-cand-opt.active { color: var(--accent); background: #e8f4ef; }
   body.theme-light .recategorize-btn { background: var(--surface2); border-color: var(--border); color: var(--text-dim); }
   body.theme-light .split-toggle::after { background: #fff; }
 
@@ -1515,6 +1520,11 @@
     gap: 2px;
     margin-bottom: 8px;
   }
+  /* 左右スワイプで月を移動したときの切り替えアニメーション */
+  @keyframes cal-slide-from-right { from { transform: translateX(28px); opacity: .3; } to { transform: none; opacity: 1; } }
+  @keyframes cal-slide-from-left  { from { transform: translateX(-28px); opacity: .3; } to { transform: none; opacity: 1; } }
+  .cal-grid.cal-anim-next { animation: cal-slide-from-right .18s ease-out; }
+  .cal-grid.cal-anim-prev { animation: cal-slide-from-left .18s ease-out; }
   .cal-dow {
     text-align: center;
     font-size: 10px;
@@ -1711,6 +1721,19 @@
     </p>
     <button type="button" class="btn btn-primary" style="background:var(--danger);border-color:var(--danger);color:#fff;" onclick="_finishWipeConfirm(true)">消去する</button>
     <button type="button" class="btn btn-secondary" onclick="_finishWipeConfirm(false)">キャンセル</button>
+  </div>
+</div>
+
+<!-- 手入力：店舗名の追加確認モーダル（似ている店舗名があれば候補から選ばせる） -->
+<div class="modal-overlay" id="store-add-confirm-modal">
+  <div class="modal">
+    <button type="button" class="modal-close" onclick="_finishStoreAddConfirm(false)" aria-label="閉じる">✕</button>
+    <div class="modal-title" id="store-add-confirm-title">店舗名の追加確認</div>
+    <p id="store-add-confirm-text" style="font-size:13px;margin-bottom:10px;line-height:1.6;"></p>
+    <div id="store-add-confirm-list" role="radiogroup"
+      style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:var(--surface2);"></div>
+    <button type="button" class="btn btn-primary" id="store-add-confirm-ok" onclick="_finishStoreAddConfirm(true)">決定</button>
+    <button type="button" class="btn btn-secondary" onclick="_finishStoreAddConfirm(false)">キャンセル</button>
   </div>
 </div>
 
@@ -1941,12 +1964,12 @@
       <!-- 店舗名 -->
       <div id="manual-store-area" style="margin-bottom:12px;">
         <div class="modal-label" style="margin-bottom:4px;">店舗名<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（オプション）</span></div>
-        <!-- 選択 / 手入力 切り替えタブ -->
+        <!-- 一覧から選択 / 追加 切り替えタブ -->
         <div style="display:flex;gap:6px;margin-bottom:6px;">
           <button id="store-mode-select-btn" onclick="setStoreMode('select')"
             style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--btn-on-accent,#111);font-family:inherit;cursor:pointer;font-weight:700;">一覧から選択</button>
           <button id="store-mode-input-btn" onclick="setStoreMode('input')"
-            style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;cursor:pointer;">手入力</button>
+            style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;cursor:pointer;">追加</button>
         </div>
         <!-- 選択モード -->
         <div id="store-select-wrap" style="position:relative;">
@@ -1966,11 +1989,18 @@
                margin-top:4px;z-index:102;overflow-y:auto;max-height:200px;">
           </div>
         </div>
-        <!-- 手入力モード -->
+        <!-- 追加モード（新しい店舗名を入力して登録する） -->
         <div id="store-input-wrap" style="display:none;">
-          <input type="text" id="manual-store-text" placeholder="店舗名を入力"
-            oninput="document.getElementById('manual-store').value=this.value||'手入力'"
-            style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="manual-store-text" placeholder="追加する店舗名を入力"
+              enterkeyhint="done"
+              oninput="document.getElementById('manual-store').value=this.value||'手入力'"
+              onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();confirmStoreAdd();}"
+              style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:16px;outline:none;">
+            <button type="button" id="store-add-btn" onclick="confirmStoreAdd()"
+              style="flex-shrink:0;padding:0 14px;font-size:13px;border-radius:6px;border:1px solid var(--accent);background:none;color:var(--accent);font-family:inherit;cursor:pointer;font-weight:700;">追加</button>
+          </div>
+          <div id="store-add-msg" style="display:none;font-size:12px;margin-top:4px;"></div>
         </div>
       </div>
 
@@ -5279,7 +5309,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-09 17:07';
+const APP_BUILD = '2026-10-16 12:23';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6753,6 +6783,60 @@ function calChangeMonth(delta) {
   _calSelectedDate = null;
   renderCalendar();
 }
+
+// ===== カレンダー：左右スワイプで前後の月へ =====
+// 月見出しと日付グリッドのどこでも、左スワイプ＝翌月・右スワイプ＝前月（下の日別パネルは対象外）
+const CAL_SWIPE_MIN_X  = 50;  // これ以上横に動いたらスワイプとみなす（px）
+const CAL_SWIPE_RATIO  = 1.5; // 横の移動量が縦の何倍以上なら横スワイプとみなすか（縦スクロールと区別）
+const CAL_SWIPE_MAX_MS = 800; // これより長くかかった操作はスワイプとみなさない
+
+function calSwipeMonth(delta) {
+  calChangeMonth(delta);
+  const grid = document.getElementById('cal-grid');
+  if (!grid) return;
+  grid.classList.remove('cal-anim-next', 'cal-anim-prev');
+  void grid.offsetWidth; // アニメーションを毎回やり直させる
+  grid.classList.add(delta > 0 ? 'cal-anim-next' : 'cal-anim-prev');
+}
+
+function setupCalendarSwipe() {
+  const area = document.getElementById('history-cal-body');
+  if (!area || area._swipeReady) return;
+  area._swipeReady = true;
+  let sx = 0, sy = 0, st = 0, tracking = false, suppressClickUntil = 0;
+  const inDayPanel = t => !!(t && t.closest && t.closest('#cal-day-panel'));
+  const start = (x, y, target) => {
+    tracking = !inDayPanel(target);
+    sx = x; sy = y; st = Date.now();
+  };
+  const end = (x, y) => {
+    if (!tracking) return;
+    tracking = false;
+    const dx = x - sx, dy = y - sy;
+    if (Date.now() - st > CAL_SWIPE_MAX_MS) return;
+    if (Math.abs(dx) < CAL_SWIPE_MIN_X || Math.abs(dx) < Math.abs(dy) * CAL_SWIPE_RATIO) return;
+    suppressClickUntil = Date.now() + 400;
+    calSwipeMonth(dx < 0 ? +1 : -1);
+  };
+  // スマホ（指1本のときだけ。2本指のピンチなどは無視）
+  area.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { tracking = false; return; }
+    start(e.touches[0].clientX, e.touches[0].clientY, e.target);
+  }, { passive: true });
+  area.addEventListener('touchend', e => {
+    const t = e.changedTouches[0];
+    if (t) end(t.clientX, t.clientY);
+  }, { passive: true });
+  area.addEventListener('touchcancel', () => { tracking = false; }, { passive: true });
+  // PC：マウスのドラッグでも同じ操作
+  area.addEventListener('mousedown', e => { if (e.button === 0) start(e.clientX, e.clientY, e.target); });
+  window.addEventListener('mouseup', e => end(e.clientX, e.clientY));
+  // スワイプ直後に来る click（日付を開く・‹ › ボタン）は無視する
+  area.addEventListener('click', e => {
+    if (Date.now() < suppressClickUntil) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+}
+setupCalendarSwipe();
 
 function renderCalendar() {
   const y = _calYear, m = _calMonth;
@@ -9736,6 +9820,11 @@ async function _drillUpInner() {
 
 // 優先度順に「今開いている最前面のUI」を閉じる共通ロジック
 async function _closeTopLayer() {
+  if (document.getElementById('store-add-confirm-modal').classList.contains('open')) {
+    _closeModalInner('store-add-confirm-modal');
+    if (_storeAddConfirmResolve) { const r = _storeAddConfirmResolve; _storeAddConfirmResolve = null; r(null); }
+    return;
+  }
   if (document.getElementById('wipe-confirm-modal').classList.contains('open')) {
     _closeModalInner('wipe-confirm-modal');
     if (_wipeConfirmResolve) { const r = _wipeConfirmResolve; _wipeConfirmResolve = null; r(false); }
@@ -10270,6 +10359,7 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   // 何か開いていれば history.back() → popstate → _closeTopLayer の流れで閉じる
   const anyOpen =
+    document.getElementById('store-add-confirm-modal').classList.contains('open') ||
     document.getElementById('add-small-modal').classList.contains('open') ||
     document.getElementById('add-middle-modal').classList.contains('open') ||
     document.getElementById('item-edit-modal').classList.contains('open') ||
@@ -11938,6 +12028,18 @@ async function saveManualReceipt() {
     showManualStatus('error', '商品名か金額を入力してください');
     return;
   }
+  // 「追加」欄に確定前の店舗名があれば、似ている店舗名の確認をしてから保存する
+  if (_manualEntryType !== 'income' && _storeMode === 'input') {
+    const txt = document.getElementById('manual-store-text');
+    if (txt && txt.value.trim()) {
+      txt.blur();
+      const res = await _resolveStoreToAdd(txt.value);
+      if (res.status === 'busy') return;
+      if (res.status === 'cancel') { showManualStatus('error', '保存を中止しました（店舗名を確認してください）'); return; }
+      if (res.status === 'ok') _applyAddedStore(res.name);
+      // 'invalid'（店名にならない語）は従来どおり下の処理に任せる
+    }
+  }
   let store = document.getElementById('manual-store').value.trim();
 
   if (_manualEntryType === 'income') {
@@ -12180,6 +12282,7 @@ function setStoreMode(mode) {
     inpBtn.style.borderColor   = isSelect ? 'var(--border)' : 'var(--accent)';
     inpBtn.style.fontWeight    = isSelect ? '400' : '700';
   }
+  if (typeof _showStoreAddMsg === 'function') _showStoreAddMsg('');
   // hidden に値を同期
   if (isSelect) {
     document.getElementById('manual-store').value = _storeSelected || '手入力';
@@ -12308,6 +12411,180 @@ function chooseStore(name) {
   });
 }
 
+// ===== 手入力：店舗名の「追加」（似ている店舗名があれば確認する） =====
+let _storeAddConfirmResolve = null;
+const STORE_SIMILAR_THRESHOLD = 0.7; // これ以上の類似度を「とても似ている」とみなす
+const STORE_SIMILAR_MAX = 5;         // 確認に出す候補の最大数
+
+// 編集距離（レーベンシュタイン距離）。引数は文字の配列
+function _storeEditDistance(A, B) {
+  if (!A.length) return B.length;
+  if (!B.length) return A.length;
+  let prev = Array.from({ length: B.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= A.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= B.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (A[i - 1] === B[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[B.length];
+}
+
+// 正規化済みの店名キー同士の類似度（0〜1）
+function _storeSimilarity(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const A = Array.from(a), B = Array.from(b);
+  const [s, l] = A.length <= B.length ? [a, b] : [b, a];
+  const sLen = Math.min(A.length, B.length), lLen = Math.max(A.length, B.length);
+  // 片方がもう片方を含む（例：アピタ ⇔ アピタ大口店）。短すぎる一致は除外
+  if (sLen >= 2 && sLen / lLen >= 0.5 && l.includes(s)) return 0.8 + 0.15 * (sLen / lLen);
+  const d = _storeEditDistance(A, B);
+  // 3文字以下の短い名前は1文字違いまでを似ているとみなす
+  if (lLen <= 3) return (d === 1 && sLen >= 2) ? 0.75 : 0;
+  return 1 - d / lLen;
+}
+
+// 登録済み店舗から name に似ているものを類似度の高い順に返す（別表記も比較対象）
+function findSimilarStores(name, limit = STORE_SIMILAR_MAX) {
+  const q = _storeKey(name);
+  if (!q) return [];
+  return loadStoreDefFromStorage()
+    .map(s => {
+      let best = 0, via = '';
+      [s.name, ...(s.aliases || [])].forEach(v => {
+        const sc = _storeSimilarity(q, _storeKey(v));
+        if (sc > best) { best = sc; via = v; }
+      });
+      return { name: s.name, score: best, via: via !== s.name ? via : '' };
+    })
+    .filter(x => x.score >= STORE_SIMILAR_THRESHOLD)
+    .sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name, 'ja'))
+    .slice(0, limit);
+}
+
+// 追加確認モーダルを開く。結果は {type:'existing', name} / {type:'new'} / null（中止）
+function _askStoreAddConfirm(name, candidates) {
+  return new Promise(resolve => {
+    _storeAddConfirmResolve = resolve;
+    const title = document.getElementById('store-add-confirm-title');
+    const text  = document.getElementById('store-add-confirm-text');
+    const list  = document.getElementById('store-add-confirm-list');
+    const okBtn = document.getElementById('store-add-confirm-ok');
+    list.innerHTML = '';
+    if (candidates.length > 0) {
+      title.textContent = '似ている店舗名があります';
+      text.textContent = `「${name}」に似ている店舗が登録されています。同じ店なら候補から選んでください。`;
+      // 候補が1件でも一覧から選ぶ形にする。既定は先頭の候補
+      const opts = [
+        ...candidates.map(c => ({ value: c.name, label: c.name, sub: c.via ? `別表記：${c.via}` : '' })),
+        { value: '__new__', label: `＋「${name}」を新しく追加`, sub: '', isNew: true }
+      ];
+      opts.forEach((o, i) => {
+        const row = document.createElement('label');
+        row.className = 'manual-cat-opt store-cand-opt' + (i === 0 ? ' active' : '');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'store-add-choice';
+        radio.value = o.value;
+        radio.checked = i === 0;
+        radio.onchange = () => {
+          list.querySelectorAll('.store-cand-opt').forEach(el =>
+            el.classList.toggle('active', el.querySelector('input').checked));
+        };
+        const label = document.createElement('span');
+        label.textContent = o.label;
+        label.style.cssText = 'min-width:0;word-break:break-all;' + (o.isNew ? 'color:var(--text-dim);' : '');
+        row.append(radio, label);
+        if (o.sub) {
+          const sub = document.createElement('span');
+          sub.className = 'store-cand-sub';
+          sub.textContent = o.sub;
+          row.appendChild(sub);
+        }
+        list.appendChild(row);
+      });
+      list.style.display = 'block';
+      okBtn.textContent = '決定';
+    } else {
+      title.textContent = '店舗名の追加確認';
+      text.textContent = `「${name}」を店舗一覧に追加しますか？`;
+      list.style.display = 'none';
+      okBtn.textContent = '追加する';
+    }
+    openModal('store-add-confirm-modal');
+  });
+}
+
+function _finishStoreAddConfirm(ok) {
+  const r = _storeAddConfirmResolve;
+  _storeAddConfirmResolve = null;
+  let result = null;
+  if (ok) {
+    const list = document.getElementById('store-add-confirm-list');
+    if (list.style.display === 'none') {
+      result = { type: 'new' };
+    } else {
+      const sel = list.querySelector('input[name="store-add-choice"]:checked');
+      if (sel) result = sel.value === '__new__' ? { type: 'new' } : { type: 'existing', name: sel.value };
+    }
+  }
+  closeModal('store-add-confirm-modal');
+  if (r) r(result);
+}
+
+// 「追加」欄の店舗名を確認して確定する
+// 戻り値の status: 'ok'（name に確定名）/ 'cancel' / 'empty' / 'invalid'（店名にならない語）/ 'busy'
+async function _resolveStoreToAdd(rawName) {
+  if (_storeAddConfirmResolve) return { status: 'busy' }; // 確認中の二重実行を防ぐ
+  let name = sanitizeStoreName(String(rawName || '').trim());
+  if (!name) return { status: 'empty' };
+  if (isNonStoreName(name)) return { status: 'invalid', name };
+  // 「LAWSON」→「ローソン」のように組み込みの正式名があればそちらに揃える
+  name = resolveStoreBrandName(name);
+  // 表記ゆれだけの違い（全角半角・かなカナ・別表記など）は同じ店として扱う
+  const exist = findStoreEntry(name);
+  if (exist) return { status: 'ok', name: exist.name, existed: true };
+  const ans = await _askStoreAddConfirm(name, findSimilarStores(name));
+  if (!ans) return { status: 'cancel' };
+  if (ans.type === 'existing') return { status: 'ok', name: ans.name, existed: true };
+  autoRegisterStoreBrand(name);
+  return { status: 'ok', name, existed: false };
+}
+
+// 確定した店舗名を「一覧から選択」側で選んだ状態にする
+function _applyAddedStore(name) {
+  const txt = document.getElementById('manual-store-text');
+  if (txt) txt.value = '';
+  setStoreMode('select');
+  rebuildStoreDropdown();
+  chooseStore(name);
+}
+
+function _showStoreAddMsg(text, isError) {
+  const el = document.getElementById('store-add-msg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = isError ? 'var(--danger)' : 'var(--accent)';
+  el.style.display = text ? 'block' : 'none';
+}
+
+// 「追加」ボタン（または入力欄で Enter）
+async function confirmStoreAdd() {
+  const txt = document.getElementById('manual-store-text');
+  if (txt) txt.blur(); // スマホのキーボードを閉じてから確認を出す
+  _showStoreAddMsg('');
+  const res = await _resolveStoreToAdd(txt ? txt.value : '');
+  if (res.status === 'empty')   { _showStoreAddMsg('店舗名を入力してください', true); return; }
+  if (res.status === 'invalid') { _showStoreAddMsg(`「${res.name}」は店舗名として登録できません`, true); return; }
+  if (res.status !== 'ok') return;
+  _applyAddedStore(res.name);
+  showManualStatus('success', res.existed
+    ? `登録済みの「${res.name}」を選択しました`
+    : `「${res.name}」を店舗一覧に追加しました`);
+}
+
 function rebuildStoreDropdown(query) {
   const list = document.getElementById('store-select-list');
   if (!list) return;
@@ -12330,7 +12607,7 @@ function rebuildStoreDropdown(query) {
       .sort((a, b) => (a.n.startsWith(q) ? 0 : 1) - (b.n.startsWith(q) ? 0 : 1))
       .map(x => x.s);
   }
-  if (hits.length === 0) { msg('該当する店舗がありません（「手入力」で新しい店名を入力できます）'); return; }
+  if (hits.length === 0) { msg('該当する店舗がありません（「追加」で新しい店名を登録できます）'); return; }
 
   hits.forEach(s => {
     const div = document.createElement('div');
