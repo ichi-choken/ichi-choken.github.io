@@ -2037,10 +2037,10 @@
         <button class="view-toggle-btn" id="view-btn-list" onclick="switchHistoryView('list')">☰ リスト</button>
       </div>
 
-      <!-- 商品名検索（カレンダー・リスト共通） -->
+      <!-- 検索（店名・商品名・日付など。カレンダー・リスト共通） -->
       <div class="history-search-bar">
         <span style="color:var(--text-dim);font-size:14px;">🔍</span>
-        <input type="text" id="history-search-input" placeholder="商品名で検索…"
+        <input type="text" id="history-search-input" placeholder="店名・商品名・日付などで検索…"
           oninput="onHistorySearchInput()" autocomplete="off" autocorrect="off" spellcheck="false">
         <button class="history-search-clear" id="history-search-clear" onclick="clearHistorySearch()">✕</button>
       </div>
@@ -5315,7 +5315,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 12:33';
+const APP_BUILD = '2026-10-16 12:38';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6560,6 +6560,49 @@ function clearHistorySearch() {
   _refreshHistorySearchView();
 }
 
+// ===== 履歴の検索：店名・日付・金額・商品名・カテゴリなどレシートの全情報が対象 =====
+// 全角半角・ひらがなカタカナ・大文字小文字・空白や記号の違い、金額の「,」「¥」「円」は無視して比べる
+function _histSearchNorm(t) {
+  return _normStoreText(t).replace(/[,¥円\/]/g, '');
+}
+// query から「レシート r → 一致情報（{fields:[表示用ラベル], items:[一致した商品]}）または null」の関数を作る
+function buildReceiptSearcher(query) {
+  const q = _histSearchNorm(query);
+  if (!q) return null;
+  const stores = loadStoreDefFromStorage();
+  const byId = new Map(stores.map(s => [s.id, s]));
+  const has = v => v != null && v !== '' && _histSearchNorm(String(v)).includes(q);
+  return r => {
+    const fields = [];
+    // 店名：レシートの表記・ブランド名・登録済みの別表記・組み込みの別表記（DAISO ⇔ ダイソー など）
+    const names = [r.store, r.store_brand];
+    const entry = (r.store_brand_id && byId.get(r.store_brand_id)) ||
+      ((r.store_brand || r.store) ? findStoreEntry(r.store_brand || r.store, stores) : null);
+    if (entry) names.push(entry.name, ...(entry.aliases || []));
+    names.slice().forEach(n => {
+      const g = n ? _builtinStoreGroupOf(n) : -1;
+      if (g >= 0) names.push(...BUILTIN_STORE_GROUPS[g]);
+    });
+    if (names.some(has)) fields.push(`店名：${storeDisplayName(r)}`);
+    else if (!r.store && has(storeDisplayName(r))) fields.push(storeDisplayName(r)); // 収入カテゴリ名
+    // 日付・時刻（「2026-10-16」「2026/10/16」「10月16日」のどれでも）
+    if (r.date) {
+      const [y, m, d] = r.date.split('-').map(Number);
+      if ([r.date, `${y}年${m}月${d}日`, `${m}月${d}日`, `${m}/${d}`, r.time].some(has)) {
+        fields.push(`日付：${r.date}${r.time ? ' ' + r.time : ''}`);
+      }
+    }
+    // 合計金額
+    const tot = effectiveTotal(r);
+    if (has(r.total) || has(tot)) fields.push(`合計：¥${Math.abs(tot).toLocaleString()}`);
+    // 商品：商品名・中カテゴリ・小カテゴリ・金額
+    const items = (r.items || []).filter(it =>
+      has(it.name) || has(resolveMiddleName(it)) || has(it.middle_category) || has(it.small_category) || has(it.price));
+    if (fields.length === 0 && items.length === 0) return null;
+    return { fields, items };
+  };
+}
+
 // 検索語が変わったら、表示中のビュー（カレンダー／リスト）を描き直す
 function _refreshHistorySearchView() {
   if (_historyView === 'cal') renderCalendar();
@@ -6655,22 +6698,21 @@ async function loadHistory() {
         return aKey.localeCompare(bKey);
       });
     }
-    // 商品名検索フィルタリング
+    // 検索フィルタリング（店名・日付・金額・商品名・カテゴリ）
     const searchQuery = (currentHistorySearch || '').trim();
     const matchEl = document.getElementById('history-search-match');
     let displayRecords = records;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    const searcher = searchQuery ? buildReceiptSearcher(searchQuery) : null;
+    if (searcher) {
       displayRecords = records.map(r => {
-        const matchedItems = (r.items || []).filter(item =>
-          (item.name || '').toLowerCase().includes(q)
-        );
-        return matchedItems.length > 0 ? { ...r, _matchedItems: matchedItems } : null;
+        const m = searcher(r);
+        return m ? { ...r, _matchedItems: m.items, _matchedFields: m.fields } : null;
       }).filter(Boolean);
-      matchEl.textContent = `「${searchQuery}」を含む商品：${displayRecords.reduce((s, r) => s + r._matchedItems.length, 0)}件 / ${displayRecords.length}レシート`;
+      const itemCount = displayRecords.reduce((s, r) => s + r._matchedItems.length, 0);
+      matchEl.textContent = `「${searchQuery}」に一致：${displayRecords.length}レシート（うち商品 ${itemCount}件）`;
       matchEl.style.display = 'block';
       if (displayRecords.length === 0) {
-        list.innerHTML = '<div class="empty-state">該当する商品が見つかりません</div>';
+        list.innerHTML = '<div class="empty-state">該当するレシートが見つかりません</div>';
         return;
       }
     } else {
@@ -6689,11 +6731,13 @@ async function loadHistory() {
       li.className = 'history-item';
       li.dataset.id = r.id;
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
-      // 検索時はマッチした商品名を表示
+      // 検索時は一致した項目（店名・日付・金額など）と商品名を表示
       const matchedItemsHtml = searchQuery && r._matchedItems
         ? `<div style="font-size:11px;color:var(--text-dim);margin-top:3px;line-height:1.6;">
-            ${r._matchedItems.slice(0, 3).map(item =>
-              `<span style="margin-right:6px;">• ${highlightText(item.name, searchQuery)}</span>`
+            ${(r._matchedFields || []).map(f =>
+              `<span style="margin-right:6px;">• ${highlightText(escHtml(f), escHtml(searchQuery))}</span>`
+            ).join('')}${r._matchedItems.slice(0, 3).map(item =>
+              `<span style="margin-right:6px;">• ${highlightText(escHtml(item.name || ''), escHtml(searchQuery))}</span>`
             ).join('')}${r._matchedItems.length > 3 ? `<span>…他${r._matchedItems.length - 3}件</span>` : ''}
            </div>`
         : '';
@@ -6872,22 +6916,22 @@ function renderCalendar() {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${pad2(today.getMonth()+1)}-${pad2(today.getDate())}`;
 
-  // 商品名検索：該当商品を含むレシートの日付を集める（リスト表示と同じ一致条件）
+  // 検索：一致するレシートの日付を集める（リスト表示と同じ一致条件）
   const searchQuery = (currentHistorySearch || '').trim();
-  const sq = searchQuery.toLowerCase();
+  const searcher = searchQuery ? buildReceiptSearcher(searchQuery) : null;
+  const sq = !!searcher;
   const hitDates = new Set();
   const matchEl = document.getElementById('history-search-match');
-  if (sq) {
-    let hitItems = 0, hitReceipts = 0;
+  if (searcher) {
+    let hitReceipts = 0;
     _calRecords.forEach(r => {
-      const n = (r.items || []).filter(it => (it.name || '').toLowerCase().includes(sq)).length;
-      if (!n) return;
-      hitItems += n; hitReceipts++;
+      if (!searcher(r)) return;
+      hitReceipts++;
       if (r.date) hitDates.add(r.date);
     });
     const monthDays = [...hitDates].filter(d => d.startsWith(monthStr)).length;
     if (matchEl) {
-      matchEl.textContent = `「${searchQuery}」を含む商品：${hitItems}件 / ${hitReceipts}レシート（この月：${monthDays}日）`;
+      matchEl.textContent = `「${searchQuery}」に一致：${hitReceipts}レシート（この月：${monthDays}日）`;
       matchEl.style.display = 'block';
     }
   } else if (matchEl) {
