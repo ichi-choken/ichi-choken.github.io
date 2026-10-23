@@ -722,6 +722,19 @@
     margin-bottom: 8px;
     display: none;
   }
+  /* 支出／収入でレシートカードを淡く色分け（検索の強調はこの後ろの定義が優先） */
+  .history-item.entry-expense {
+    background: linear-gradient(rgba(255,140,120,0.045), rgba(255,140,120,0.045)), var(--surface);
+    border-color: rgba(255,140,120,0.16);
+  }
+  .history-item.entry-income {
+    background: linear-gradient(rgba(90,200,250,0.06), rgba(90,200,250,0.06)), var(--surface);
+    border-color: rgba(90,200,250,0.22);
+  }
+  .history-item.entry-mixed { box-shadow: inset 3px 0 0 rgba(90,200,250,0.35); }
+  body.theme-light .history-item.entry-expense { background: #fbf4f1; border-color: #efdcd5; }
+  body.theme-light .history-item.entry-income  { background: #eff6f9; border-color: #d3e6ef; }
+  body.theme-light .history-item.entry-mixed   { box-shadow: inset 3px 0 0 #a9d3e6; }
   .history-item-highlight {
     background: rgba(200,255,87,0.18);
     border-radius: 3px;
@@ -4552,6 +4565,16 @@ function splitReceiptForStats(r, names) {
     { ...r, entry_type: 'income',  items: inc, total: null, _part: 'income' },
   ];
 }
+// 一覧のカード色分け用：収入だけ→entry-income、支出（＋収入の混在）→entry-expense（混在は entry-mixed も）
+function receiptTypeClass(r) {
+  const names = incomeCategoryNames();
+  const items = (r && r.items) || [];
+  const incCount = items.filter(it => itemIsIncome(r, it, names)).length;
+  if (r && r.entry_type === 'income') return 'entry-income';
+  if (items.length > 0 && incCount === items.length) return 'entry-income';
+  return incCount > 0 ? 'entry-expense entry-mixed' : 'entry-expense';
+}
+
 function splitReceiptsForStats(records) {
   const names = incomeCategoryNames();
   return records.flatMap(r => splitReceiptForStats(r, names));
@@ -5731,7 +5754,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:23';
+const APP_BUILD = '2026-10-23 12:29';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -7283,7 +7306,7 @@ async function loadHistory() {
 
     displayRecords.forEach(r => {
       const li = document.createElement('li');
-      li.className = 'history-item';
+      li.className = 'history-item ' + receiptTypeClass(r);
       li.dataset.id = r.id;
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       // 検索時は一致した項目（日付・金額など）と商品名を表示（店名の一致は上の太字にマーカー）
@@ -7629,7 +7652,7 @@ function showCalDayPanel(dateStr, records, opts = {}) {
   records.forEach(r => {
     const li = document.createElement('li');
     const m = searcher ? matches.get(r) : null;
-    li.className = 'history-item' + (searcher ? (m ? ' search-hit-item' : ' search-dim') : '');
+    li.className = 'history-item ' + receiptTypeClass(r) + (searcher ? (m ? ' search-hit-item' : ' search-dim') : '');
     li.style.cursor = 'pointer';
 
     const left = document.createElement('div');
@@ -9844,7 +9867,7 @@ async function renderIncomeCatReceipts(catName) {
   } else {
     matched.forEach(({ r, matchItems, matchTotal }) => {
       const li = document.createElement('li');
-      li.className = 'history-item';
+      li.className = 'history-item ' + receiptTypeClass(r);
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       const itemNames = matchItems.map(i => i.name || '').filter(Boolean);
       const itemLabel = itemNames.length > 0
@@ -10001,7 +10024,7 @@ async function renderStoreReceipts(storeName, records) {
   } else {
     matched.forEach(r => {
       const li = document.createElement('li');
-      li.className = 'history-item';
+      li.className = 'history-item ' + receiptTypeClass(r);
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       li.innerHTML = `
         <div class="history-left">
@@ -10238,7 +10261,7 @@ async function renderLargeDrillReceipts(large, midIdToLarge, records) {
   } else {
     matched.forEach(({ r, matchItems, matchTotal }) => {
       const li = document.createElement('li');
-      li.className = 'history-item';
+      li.className = 'history-item ' + receiptTypeClass(r);
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       const itemNames = matchItems.map(i => i.name || '').filter(Boolean);
       const itemLabel = itemNames.length > 0
@@ -10298,7 +10321,7 @@ async function renderMiddleDrillReceipts(middle, records) {
   } else {
     matched.forEach(({ r, matchItems, matchTotal }) => {
       const li = document.createElement('li');
-      li.className = 'history-item';
+      li.className = 'history-item ' + receiptTypeClass(r);
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       // 該当商品名をサブテキストとして表示（最大3件）
       const itemNames = matchItems.map(i => i.name || '').filter(Boolean);
@@ -10365,7 +10388,7 @@ async function renderSmallDrillReceipts(middle, small) {
   } else {
     matched.forEach(({ r, matchItems, matchTotal }) => {
       const li = document.createElement('li');
-      li.className = 'history-item';
+      li.className = 'history-item ' + receiptTypeClass(r);
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       li.innerHTML = `
         <div class="history-left">
