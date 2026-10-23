@@ -5551,7 +5551,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:05';
+const APP_BUILD = '2026-10-23 12:09';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6649,6 +6649,23 @@ function playSaveChime() {
     { f: 659.25, at: 0.00, d: 0.32, vol: 0.20, atk: 0.014, harm: 0.10 }, // ぴぃ E5
     { f: 329.63, at: 0.22, d: 0.50, vol: 0.26, atk: 0.018, harm: 0.10 }, // こん E4
     { f: 329.63, at: 0.50, d: 0.65, vol: 0.26, atk: 0.018, harm: 0.10 }, // こん E4
+  ]);
+}
+
+// 手入力の自動カテゴリ分け完了音「ぴろりん」（保存音と区別できるよう上昇する3音）
+function playAutoCatDoneChime() {
+  _playNotes([
+    { f: 987.77,  at: 0.00, d: 0.22, vol: 0.18, atk: 0.010, harm: 0.08 }, // B5
+    { f: 1318.51, at: 0.11, d: 0.24, vol: 0.18, atk: 0.010, harm: 0.08 }, // E6
+    { f: 1661.22, at: 0.22, d: 0.50, vol: 0.16, atk: 0.012, harm: 0.06 }, // G#6
+  ]);
+}
+
+// 手入力の自動カテゴリ分け失敗音（低めに下がる2音）
+function playAutoCatFailChime() {
+  _playNotes([
+    { f: 392.00, at: 0.00, d: 0.30, vol: 0.22, atk: 0.014, harm: 0.08 }, // G4
+    { f: 311.13, at: 0.20, d: 0.50, vol: 0.22, atk: 0.016, harm: 0.08 }, // D#4
   ]);
 }
 
@@ -12592,10 +12609,18 @@ async function autoCategorizeManualItems(id, indices, largeHint) {
   await recategorizeReceipt(id, dummyBtn, { onlyIndices: indices, largeHint, skipStoreBrand: true });
   if (dummyBtn.classList.contains('error')) {
     showManualStatus('error', `自動カテゴライズに失敗しました（履歴の🔄で再試行できます）`);
+    playAutoCatFailChime();
     console.warn(dummyBtn.dataset.errorMsg);
     return;
   }
+  // 同時実行の上限などで実行されずに戻った場合（エラー印も完了印もない）
+  if (!recatDoneIds.has(id)) {
+    showManualStatus('error', '自動カテゴライズを実行できませんでした（履歴の🔄で再試行できます）');
+    playAutoCatFailChime();
+    return;
+  }
   showManualStatus('success', 'カテゴリを自動判定しました');
+  playAutoCatDoneChime(); // カテゴリ分けが終わったことを音で知らせる
   try { if (typeof _refreshHistoryAfterEdit === 'function') await _refreshHistoryAfterEdit(); } catch (_) {}
 }
 
