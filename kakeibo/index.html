@@ -2616,8 +2616,8 @@
     </select>
 
     <label class="pref-switch-row" for="pref-manual-reset-cat">
-      <span class="pref-switch-text">手入力で保存毎にカテゴリを初期化
-        <span class="pref-switch-sub">OFF：直前のカテゴリを引き継ぐ（日付はどちらでも引き継ぎ）</span>
+      <span class="pref-switch-text">追加毎にカテゴリ選択状態を初期化
+        <span class="pref-switch-sub">ON：手入力で商品を追加するたびにカテゴリを初期状態へ戻す／OFF：直前のカテゴリを引き継ぐ（日付・支出／収入はどちらでも引き継ぎ）</span>
       </span>
       <span class="pref-switch">
         <input type="checkbox" id="pref-manual-reset-cat" onchange="onPrefChange('manualResetCat', this.checked)">
@@ -5663,7 +5663,7 @@ const PREF_DEFAULTS = {
   historyView: 'cal',   // 'cal' | 'list'
   cameraMode: 'camera', // 'camera' | 'gallery'
   backupDays: 14,       // 0 = 催促しない
-  manualResetCat: false, // true = 手入力保存毎にカテゴリを初期化
+  manualResetCat: false, // true = 手入力で商品を追加するたびにカテゴリ選択状態を初期化
 };
 let _prefs = null;
 
@@ -5754,7 +5754,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:29';
+const APP_BUILD = '2026-10-23 12:31';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -12805,6 +12805,8 @@ function addManualItem() {
   nameEl.value = '';
   priceEl.value = '';
   if (qtyEl) qtyEl.value = 1;
+  // 設定「追加毎にカテゴリ選択状態を初期化」：支出／収入はそのままで、カテゴリだけ初期状態に戻す
+  if (getPref('manualResetCat')) setManualEntryType(_manualEntryType);
   renderManualItems();
   nameEl.focus();
   return true;
@@ -12922,7 +12924,7 @@ async function saveManualReceipt() {
     });
     playSaveChime();
     // 連続入力しやすいよう、日付・支出/収入・カテゴリ（大・中・小）は直前の内容を引き継ぐ
-    // （設定「手入力で保存毎にカテゴリを初期化」がONならカテゴリは初期化）
+    // （設定「追加毎にカテゴリ選択状態を初期化」がONならカテゴリは初期化）
     clearManualEntry({ keepPrevious: true });
     if (autoCatIdx.length > 0 && localStorage.getItem('gemini_api_key')) {
       showManualStatus('success', '保存しました！（カテゴリを自動判定中…）');
@@ -13064,7 +13066,7 @@ function clearManualEntry(opts = {}) {
   // ── 直前の内容を復元 ──
   if (keep.date) document.getElementById('manual-date').value = keep.date;
   if (getPref('manualResetCat')) {
-    // 設定で「保存毎にカテゴリを初期化」がONなら、日付だけ引き継いでカテゴリは初期状態へ
+    // 設定「追加毎にカテゴリ選択状態を初期化」がONなら、日付だけ引き継いでカテゴリは初期状態へ
     setManualEntryType('expense');
     return;
   }
