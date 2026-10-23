@@ -973,6 +973,50 @@
     font-family: 'Space Mono', monospace;
     font-size: 18px;
     color: var(--accent);
+    /* 内訳（支出 − 収入）を下に添えても金額が欠けないよう縦に並べる */
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  /* 詳細：既存のレシートに商品を追加するボタン */
+  .detail-add-item-btn {
+    display: block;
+    width: calc(100% - 32px);
+    margin: 4px 16px 16px;
+    padding: 10px;
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    color: var(--accent);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  /* 追加タブ：既存のレシートへ追加中の表示 */
+  #manual-edit-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    background: rgba(200,255,87,0.07);
+    font-size: 12px;
+    color: var(--text);
+  }
+  body.theme-light #manual-edit-banner { background: #eef6f1; }
+  #manual-edit-banner .meb-text { flex: 1; min-width: 0; word-break: break-all; }
+  #manual-edit-banner button {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
   }
   .detail-items { padding: 12px 16px; }
   .detail-item-row {
@@ -1938,6 +1982,8 @@
   <div class="section" id="manual-entry-section">
     <div class="card" id="manual-entry-card">
       <div class="card-title">✍️ 手入力で追加</div>
+      <!-- 詳細の「＋ 商品を追加」から開いたとき：追加先のレシートを表示 -->
+      <div id="manual-edit-banner" style="display:none;"></div>
 
       <input type="hidden" id="manual-store" value="手入力">
       <input type="hidden" id="manual-time" value="">
@@ -2112,7 +2158,7 @@
       <!-- 保存結果メッセージ（「保存する」のすぐ上） -->
       <div id="manual-save-msg" style="display:none;font-size:13px;text-align:center;padding:6px 0 2px;"></div>
 
-      <button class="btn btn-primary" onclick="saveManualReceipt()">💾 保存する</button>
+      <button class="btn btn-primary" id="manual-save-btn" onclick="saveManualReceipt()">💾 保存する</button>
       <button class="btn btn-secondary" onclick="clearManualEntry()">🗑 クリア</button>
     </div>
   </div>
@@ -2211,6 +2257,7 @@
       </div>
     </div>
     <div class="detail-items" id="detail-items"></div>
+    <button class="detail-add-item-btn" onclick="addItemsToCurrentReceipt()">＋ 商品を追加</button>
   </div>
 </div>
 
@@ -2415,6 +2462,7 @@
       </div>
     </div>
     <div class="detail-items" id="stats-detail-items"></div>
+    <button class="detail-add-item-btn" onclick="addItemsToCurrentReceipt()">＋ 商品を追加</button>
   </div>
 </div>
 
@@ -5754,7 +5802,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:31';
+const APP_BUILD = '2026-10-23 12:37';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -12903,13 +12951,18 @@ async function saveManualReceipt() {
   // 自動カテゴライズ対象の商品 index を控え、保存データからは印を外す
   const autoCatIdx = [];
   const signedItems = manualItems.map((it, i) => {
-    const { _autoCat, ...rest } = it;
+    const { _autoCat, _existing, ...rest } = it;
     if (_autoCat) autoCatIdx.push(i);
     const type = rest.entry_type === 'income' ? 'income' : 'expense';
     // 収入はマイナスで保存。支出は入力どおり（値引きのマイナス入力もそのまま）
     return { ...rest, price: type === 'income' ? -Math.abs(rest.price || 0) : (rest.price || 0), entry_type: type };
   });
   const total = signedItems.reduce((s, i) => s + (i.price || 0), 0);
+    // 詳細の「＋ 商品を追加」から開いたときは、新しいレシートではなく元のレシートを更新する
+    if (_manualEditTargetId != null) {
+      await _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId, date, time, signedItems, allIncome, autoCatIdx, largeHint });
+      return;
+    }
     const newId = await dbAdd('receipts', {
       store,
       store_brand: storeBrand,
@@ -12935,6 +12988,128 @@ async function saveManualReceipt() {
   } catch(err) {
     showManualStatus('error', `保存エラー: ${err.message}`);
   }
+}
+
+// ===== 既存のレシートに商品を追加する（詳細の「＋ 商品を追加」） =====
+// 追加タブの手入力フォームに、そのレシートの商品・日付・店舗を読み込んで開く。
+// 既存の商品は追加済みの商品として上に並び、保存するとそのレシートを更新する。
+// （起動処理の中で clearManualEntry から参照されても大丈夫なよう var にする）
+var _manualEditTargetId = null;     // 追加先のレシートid（null なら通常の新規追加）
+var _manualEditReturnCtx = 'history'; // 保存・中止後に戻る詳細の場所（'history' | 'stats'）
+
+async function addItemsToCurrentReceipt() {
+  if (!currentRecord) return;
+  const all = await dbGetAll('receipts');
+  const r = all.find(x => x.id === currentRecord.id) || currentRecord;
+  _manualEditTargetId = r.id;
+  _manualEditReturnCtx = currentDetailContext === 'stats' ? 'stats' : 'history';
+
+  switchTab('upload');
+  clearManualEntry({ keepEditTarget: true });
+  // 既存の商品：収入は手入力と同じく正の金額で持ち、保存時にマイナスへ戻す
+  const names = incomeCategoryNames();
+  manualItems = (r.items || []).map(it => {
+    const inc = itemIsIncome(r, it, names);
+    return { ...JSON.parse(JSON.stringify(it)), price: inc ? Math.abs(it.price || 0) : (it.price || 0),
+             entry_type: inc ? 'income' : 'expense', _existing: true };
+  });
+  const hasExpense = manualItems.some(i => i.entry_type !== 'income');
+  setManualEntryType(hasExpense ? 'expense' : 'income');
+  if (r.date) document.getElementById('manual-date').value = r.date;
+  document.getElementById('manual-time').value = r.time || '';
+  initStorePicker('manual', r.store || '');
+  renderManualItems();
+  _renderManualEditBanner(r);
+
+  const sec = document.getElementById('manual-entry-section');
+  if (sec) setTimeout(() => sec.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  setTimeout(() => document.getElementById('manual-item-name')?.focus(), 300);
+}
+
+function _renderManualEditBanner(r) {
+  const el = document.getElementById('manual-edit-banner');
+  const btn = document.getElementById('manual-save-btn');
+  if (!el) return;
+  if (_manualEditTargetId == null || !r) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    if (btn) btn.textContent = '💾 保存する';
+    return;
+  }
+  el.innerHTML = `<span class="meb-text">✏️ 「${escHtml(storeDisplayName(r))}」（${escHtml(r.date || '日付なし')}）のレシートに商品を追加中</span>
+    <button type="button" onclick="cancelManualEditTarget()">やめる</button>`;
+  el.style.display = 'flex';
+  if (btn) btn.textContent = '💾 レシートを更新';
+}
+
+function _exitManualEditTarget() {
+  _manualEditTargetId = null;
+  _renderManualEditBanner(null);
+}
+
+// 追加をやめて、元のレシートの詳細へ戻る（入力内容は捨てる）
+async function cancelManualEditTarget() {
+  const id = _manualEditTargetId;
+  const ctx = _manualEditReturnCtx;
+  _exitManualEditTarget();
+  clearManualEntry();
+  if (id != null) await _returnToReceiptDetail(id, ctx);
+}
+
+// 詳細へ戻る（詳細を開いたときの履歴は残っているので、表示だけ戻す）
+// switchTab だとカレンダーの月や集計の期間が初期化されるので、タブの表示切り替えだけ行う
+async function _returnToReceiptDetail(id, ctx) {
+  const all = await dbGetAll('receipts');
+  const r = all.find(x => x.id === id);
+  const tab = ctx === 'stats' ? 'stats' : 'history';
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', ['upload','history','stats'][i] === tab));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (!r) return;
+  if (ctx === 'stats') await _showDetailFromStatsBase(r);
+  else await _showDetailBase(r);
+}
+
+async function _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId, date, time, signedItems, allIncome, autoCatIdx, largeHint }) {
+  const id = _manualEditTargetId;
+  const ctx = _manualEditReturnCtx;
+  const orig = (await dbGetAll('receipts')).find(x => x.id === id);
+  if (!orig) {
+    _exitManualEditTarget();
+    showManualStatus('error', '追加先のレシートが見つかりません（削除された可能性があります）');
+    return;
+  }
+  const origSum = (orig.items || []).reduce((s, i) => s + (i.price || 0), 0);
+  const newSum = signedItems.reduce((s, i) => s + (i.price || 0), 0);
+  // 税抜表示レシートなどで合計（税込）が商品の合計より大きかった分は保つ
+  const extra = (orig.total && orig.total > origSum) ? orig.total - origSum : 0;
+  const updated = {
+    ...orig,
+    date,
+    time,
+    items: signedItems,
+    total: newSum + extra,
+    entry_type: allIncome ? 'income' : 'expense',
+    updated_at: new Date().toISOString()
+  };
+  // 店舗名は変えたときだけ更新（同じ店名ならブランド名・店IDもそのまま）
+  if ((store || null) !== (orig.store || null)) {
+    updated.store = store;
+    updated.store_brand = storeBrand;
+    updated.store_brand_id = storeBrandId || null;
+  }
+  await dbPut('receipts', updated);
+  playSaveChime();
+  _exitManualEditTarget();
+  clearManualEntry({ keepPrevious: true });
+  if (autoCatIdx.length > 0 && localStorage.getItem('gemini_api_key')) {
+    showManualStatus('success', 'レシートを更新しました！（カテゴリを自動判定中…）');
+    autoCategorizeManualItems(id, autoCatIdx, largeHint);
+  } else {
+    showManualStatus('success', 'レシートを更新しました！');
+  }
+  // 元のレシートの詳細へ戻って結果を見せる
+  await _returnToReceiptDetail(id, ctx);
 }
 
 // 手入力で中カテゴリ未選択だった商品を、保存後に裏で自動カテゴライズする
@@ -13041,6 +13216,8 @@ function clearManualEntry(opts = {}) {
       incomeName: catLabel ? catLabel.textContent.trim() : ''
     };
   }
+  // 「クリア」したら既存レシートへの追加もやめる（詳細から開く処理の中で呼ぶときは保つ）
+  if (!opts.keepEditTarget && _manualEditTargetId != null) _exitManualEditTarget();
   manualItems = [];
   document.getElementById('manual-store').value = '手入力';
   // 店舗選択UIをリセット
