@@ -2633,6 +2633,13 @@
       <button type="button" class="modal-close" onclick="closeIncomeCatEditor()" aria-label="閉じる">✕</button>
     </div>
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;">手入力フォームの「収入」選択時に表示されるカテゴリ一覧を管理します。左端の ⠿ をドラッグすると並び替えできます。</p>
+    <div style="display:flex; gap:6px; margin-bottom:12px;">
+      <button class="btn btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="exportIncomeCategories()">📤 JSONエクスポート</button>
+      <label style="flex:1; position:relative;">
+        <input type="file" accept=".json,application/json" id="income-cat-import-file" onchange="importIncomeCategoriesFromFile(this)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;">
+        <div class="btn btn-secondary" style="margin-top:0; text-align:center; pointer-events:none; padding:8px; font-size:12px;">📥 JSONからインポート</div>
+      </label>
+    </div>
     <div id="income-cat-list-ui" style="margin-bottom:16px;"></div>
     <div style="display:flex;gap:8px;margin-bottom:4px;">
       <input type="text" id="income-cat-new-input" placeholder="新しいカテゴリ名"
@@ -4389,6 +4396,78 @@ function saveIncomeCategories(list) {
   localStorage.setItem(INCOME_CAT_KEY, JSON.stringify(list));
 }
 
+// ===== 収入カテゴリのエクスポート／インポート =====
+// ファイル形式：{ "type": "income_categories", "version": 1, "incomeCategories": ["給与・賞与", ...] }
+// 読み込みは上の形式のほか、名前の配列（["給与・賞与", ...]）や [{ "name": "..." }] も受け付ける
+function exportIncomeCategories() {
+  const payload = {
+    type: 'income_categories',
+    version: 1,
+    exported_at: new Date().toISOString(),
+    incomeCategories: loadIncomeCategories()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const n = new Date(); const pad = x => String(x).padStart(2, '0');
+  a.href = url;
+  a.download = `収入カテゴリ_${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}_${pad(n.getHours())}_${pad(n.getMinutes())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// JSON の中身から収入カテゴリ名の配列を取り出す（不正なら例外）
+function parseIncomeCategoriesJson(data) {
+  let list = Array.isArray(data) ? data
+    : (data && Array.isArray(data.incomeCategories)) ? data.incomeCategories
+    : null;
+  if (!list) throw new Error('収入カテゴリのファイルではありません（incomeCategories が見つかりません）');
+  const names = list.map((v, i) => {
+    const name = typeof v === 'string' ? v : (v && typeof v.name === 'string' ? v.name : null);
+    if (name == null) throw new Error(`[${i}] の形式が不正です`);
+    return name.trim();
+  }).filter(Boolean);
+  const uniq = [...new Set(names)];
+  if (uniq.length === 0) throw new Error('カテゴリが1件もありません');
+  return uniq;
+}
+
+async function importIncomeCategoriesFromFile(input) {
+  const file = input.files && input.files[0];
+  const msg = document.getElementById('income-cat-msg');
+  if (!file) return;
+  try {
+    const incoming = parseIncomeCategoriesJson(JSON.parse(await file.text()));
+    const current = loadIncomeCategories();
+    const replace = confirm(`収入カテゴリ ${incoming.length}件を読み込みます。\n\n` +
+      'OK：今の一覧をこのファイルの内容で置き換える\nキャンセル：今の一覧に無いものだけ追加する\n\n' +
+      '（どちらでも、記録済みのレシートの収入はそのまま残ります）');
+    let result, added = 0;
+    if (replace) {
+      result = incoming;
+    } else {
+      result = [...current];
+      incoming.forEach(n => { if (!result.includes(n)) { result.push(n); added++; } });
+    }
+    saveIncomeCategories(result);
+    renderIncomeCatList();
+    updateIncomeCatStatus();
+    if (msg) {
+      msg.style.color = 'var(--accent)';
+      msg.textContent = replace
+        ? `✅ ${result.length}件で置き換えました`
+        : `✅ ${added}件追加しました（重複 ${incoming.length - added}件はスキップ）`;
+    }
+  } catch (e) {
+    if (msg) { msg.style.color = 'var(--danger)'; msg.textContent = `❌ 読み込みエラー：${e.message}`; }
+    else alert(`読み込みエラー：${e.message}`);
+  } finally {
+    input.value = '';
+  }
+}
+
 // ===== 支出と収入が混在するレシート =====
 // 1枚のレシートに支出の商品と収入の商品（ポイント利用など）を一緒に入れられる。
 //   - 商品が収入かどうかは「商品の entry_type が income」か「カテゴリが収入カテゴリ」で決まる
@@ -5652,7 +5731,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:21';
+const APP_BUILD = '2026-10-23 12:23';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -5784,6 +5863,7 @@ async function buildExportFile() {
     exported_at: new Date().toISOString(),
     categoryDef: categoryDef || [],
     largeDef: largeDef || [],
+    incomeCategories: loadIncomeCategories(),
     prefs: loadPrefs(),
     records
   };
@@ -6059,6 +6139,14 @@ async function importData(file) {
     }
     const incoming = payload.records;
     const total = incoming.length;
+
+    // 収入カテゴリが含まれていれば復元する（含まれない古いファイルなら今の設定のまま）
+    if (Array.isArray(payload.incomeCategories)) {
+      try {
+        saveIncomeCategories(parseIncomeCategoriesJson(payload.incomeCategories));
+        updateIncomeCatStatus();
+      } catch (e) { console.warn('収入カテゴリの復元をスキップ', e); }
+    }
 
     // version 2以降: categoryDef と largeDef もインポートしてIDを同期
     // これにより middle_category_id が正しく大カテゴリに紐づく
