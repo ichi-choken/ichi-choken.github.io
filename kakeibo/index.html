@@ -2108,7 +2108,7 @@
 
       <!-- 店舗名 -->
       <div id="manual-store-area" style="margin-bottom:12px;">
-        <div class="modal-label" style="margin-bottom:4px;">店舗名<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（オプション）</span></div>
+        <div class="modal-label" style="margin-bottom:4px;"><span id="manual-store-label">店舗名</span><span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（オプション）</span></div>
         <!-- 選択モード -->
         <div id="store-select-wrap" style="position:relative;">
           <div style="display:flex;align-items:center;
@@ -5805,7 +5805,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:46';
+const APP_BUILD = '2026-10-23 14:39';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -8026,16 +8026,12 @@ async function changeSplitCount(ctx, delta) {
 // レシート情報編集
 var openReceiptEditModal = function() {
   const isIncome = currentRecord.entry_type === 'income';
-  // 店舗名 or 収入カテゴリの切り替え
-  document.getElementById('edit-store-text-row').style.display = isIncome ? 'none' : 'block';
-  document.getElementById('edit-income-cat-row').style.display = isIncome ? 'block' : 'none';
-  if (isIncome) {
-    const sel = document.getElementById('edit-income-cat-select');
-    const cats = loadIncomeCategories();
-    sel.innerHTML = cats.map(c => `<option value="${escHtml(c)}"${c === currentRecord.store ? ' selected' : ''}>${escHtml(c)}</option>`).join('');
-  } else {
-    initStorePicker('edit', currentRecord.store || '');
-  }
+  // 支出・収入どちらも店舗を選ぶ（収入のカテゴリは商品の編集で変える）
+  document.getElementById('edit-store-text-row').style.display = 'block';
+  document.getElementById('edit-income-cat-row').style.display = 'none';
+  const lbl = document.querySelector('#edit-store-text-row .modal-label');
+  if (lbl) lbl.textContent = isIncome ? '収入元（店舗）' : '店舗名';
+  initStorePicker('edit', receiptStoreForPicker(currentRecord));
   document.getElementById('edit-date-input').value = currentRecord.date || '';
   document.getElementById('edit-time-input').value = currentRecord.time || '';
   document.getElementById('receipt-edit-modal').classList.add('open');
@@ -8044,12 +8040,8 @@ var openReceiptEditModal = function() {
 async function saveReceiptEdit() {
   const modal = document.getElementById('receipt-edit-modal');
   const isPreview = modal.dataset.mode === 'preview';
-  const isIncome = !isPreview && currentRecord.entry_type === 'income';
-
   let newStore;
-  if (isIncome) {
-    newStore = document.getElementById('edit-income-cat-select').value;
-  } else {
+  {
     // 「追加」欄に確定前の店舗名があれば、似ている店舗名の確認をしてから保存する
     if (_spSt('edit').mode === 'input') {
       const txt = document.getElementById('edit-store-text');
@@ -8068,7 +8060,7 @@ async function saveReceiptEdit() {
   const newTime  = document.getElementById('edit-time-input').value || null;
   // 店舗名が変わったときだけ、ブランド名と店ID も新しい店名に合わせる（空にしたら店舗なし）
   const target = isPreview ? parsedData : currentRecord;
-  const storeChanged = !isIncome && (newStore || '') !== (target.store || '');
+  const storeChanged = (newStore || '') !== (isPreview ? (target.store || '') : receiptStoreForPicker(target));
 
   if (isPreview) {
     // parsedData を直接更新
@@ -8081,9 +8073,7 @@ async function saveReceiptEdit() {
     closeModal('receipt-edit-modal');
     renderResult(parsedData);
   } else {
-    if (isIncome) {
-      currentRecord.store = newStore || currentRecord.store;
-    } else if (storeChanged) {
+    if (storeChanged) {
       currentRecord.store = newStore || null;
       const brand = newStore ? cleanStoreBrand(newStore) : null;
       currentRecord.store_brand = brand;
@@ -12932,11 +12922,25 @@ function _syncManualSplitUI() {
 }
 
 // 店舗欄：支出の商品がある、または支出を入力中なら表示（収入だけのときは店舗なし）
+// 店舗欄：支出・収入どちらでも表示（収入は給料の支払元などを記録できる）。
+// 収入だけを入力中は見出しを「収入元（店舗）」にする
 function _syncManualStoreArea() {
   const storeArea = document.getElementById('manual-store-area');
   if (!storeArea) return;
-  const hasExpense = manualItems.some(i => i.entry_type !== 'income');
-  storeArea.style.display = (_manualEntryType === 'expense' || hasExpense) ? 'block' : 'none';
+  storeArea.style.display = 'block';
+  const label = document.getElementById('manual-store-label');
+  if (label) {
+    const hasExpense = manualItems.some(i => i.entry_type !== 'income');
+    label.textContent = (_manualEntryType === 'income' && !hasExpense) ? '収入元（店舗）' : '店舗名';
+  }
+}
+
+// 収入レシートの店名欄。以前は収入カテゴリ名（「給与・賞与」など）を店名欄に入れていたので、
+// それは「店舗なし」として扱う（表示はこれまでどおりカテゴリ名になる）
+function receiptStoreForPicker(r) {
+  if (!r || !r.store) return '';
+  if (r.entry_type === 'income' && incomeCategoryNames().has(r.store)) return '';
+  return r.store;
 }
 
 async function saveManualReceipt() {
@@ -12951,7 +12955,7 @@ async function saveManualReceipt() {
   // 収入の商品だけなら収入レシート、支出の商品が1つでもあれば支出レシート（収入の商品も同じレシートに入れる）
   const allIncome = manualItems.every(it => it.entry_type === 'income');
   // 「追加」欄に確定前の店舗名があれば、似ている店舗名の確認をしてから保存する
-  if (!allIncome && _spSt('manual').mode === 'input') {
+  if (_spSt('manual').mode === 'input') {
     const txt = document.getElementById('manual-store-text');
     if (txt && txt.value.trim()) {
       txt.blur();
@@ -12964,10 +12968,8 @@ async function saveManualReceipt() {
   }
   let store = document.getElementById('manual-store').value.trim();
 
-  if (allIncome) {
-    // 収入は店ではないので店名は null（表示側でカテゴリ名を出す）
-    store = null;
-  } else if (!store || store === '手入力' || store === '店舗を選択') {
+  if (!store || store === '手入力' || store === '店舗を選択') {
+    // 店舗未選択なら null（収入で未選択なら一覧などではカテゴリ名を出す）
     // 店舗未選択ならカテゴリ名などで埋めず null のままにする
     store = null;
   }
@@ -13055,7 +13057,7 @@ async function addItemsToCurrentReceipt() {
   setManualEntryType(hasExpense ? 'expense' : 'income');
   if (r.date) document.getElementById('manual-date').value = r.date;
   document.getElementById('manual-time').value = r.time || '';
-  initStorePicker('manual', r.store || '');
+  initStorePicker('manual', receiptStoreForPicker(r));
   _resetManualSplit(r.split_enabled, r.split_count);
   renderManualItems();
   _renderManualEditBanner(r);
@@ -13134,7 +13136,7 @@ async function _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId,
     updated_at: new Date().toISOString()
   };
   // 店舗名は変えたときだけ更新（同じ店名ならブランド名・店IDもそのまま）
-  if ((store || null) !== (orig.store || null)) {
+  if ((store || null) !== (receiptStoreForPicker(orig) || null)) {
     updated.store = store;
     updated.store_brand = storeBrand;
     updated.store_brand_id = storeBrandId || null;
