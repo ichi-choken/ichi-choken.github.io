@@ -1075,6 +1075,9 @@
     font-size: 13px;
   }
   .split-bar-label { color: var(--text-dim); flex-shrink: 0; }
+  /* 手入力フォーム内の割り勘（カードの中なので枠・背景なし） */
+  .split-bar.manual-split-bar { padding: 4px 0 10px; background: none; border-bottom: none; flex-wrap: wrap; }
+  .manual-split-share { margin-left: auto; font-size: 12px; color: var(--text-dim); font-family: 'Space Mono', monospace; }
   .split-toggle {
     width: 36px; height: 20px;
     background: var(--surface2);
@@ -2154,6 +2157,19 @@
       <div id="manual-add-item-form" style="display:none;"></div>
 
       <span id="manual-total" style="display:none;"></span>
+
+      <!-- 割り勘（詳細画面と同じ設定を保存時に付ける） -->
+      <div class="split-bar manual-split-bar" id="split-bar-manual">
+        <span class="split-bar-label">割り勘</span>
+        <div class="split-toggle" id="split-toggle-manual" onclick="toggleManualSplit()"></div>
+        <div class="split-count-wrap hidden" id="split-count-wrap-manual">
+          <button type="button" class="split-count-btn" onclick="changeManualSplitCount(-1)">−</button>
+          <span class="split-count-val" id="split-count-val-manual">2</span>
+          <span class="split-count-unit">人</span>
+          <button type="button" class="split-count-btn" onclick="changeManualSplitCount(+1)">＋</button>
+        </div>
+        <span class="manual-split-share" id="manual-split-share"></span>
+      </div>
 
       <!-- 保存結果メッセージ（「保存する」のすぐ上） -->
       <div id="manual-save-msg" style="display:none;font-size:13px;text-align:center;padding:6px 0 2px;"></div>
@@ -5802,7 +5818,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:37';
+const APP_BUILD = '2026-10-23 12:42';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -12869,6 +12885,7 @@ function renderManualItems() {
   const ul = document.getElementById('manual-items-list');
   ul.innerHTML = '';
   _syncManualStoreArea();
+  _syncManualSplitUI();
   if (manualItems.length === 0) {
     document.getElementById('manual-total').textContent = '¥0';
     return;
@@ -12893,6 +12910,38 @@ function renderManualItems() {
   const total = exp > 0 ? exp - inc : inc;
   document.getElementById('manual-total').textContent = '¥' + total.toLocaleString() +
     (exp > 0 && inc > 0 ? `（支出 ¥${exp.toLocaleString()} − 収入 ¥${inc.toLocaleString()}）` : '');
+}
+
+// ===== 手入力の割り勘 =====
+// 保存するレシートに split_enabled / split_count を付ける（詳細画面の割り勘と同じ）
+var _manualSplit = { on: false, count: 2 };
+
+function toggleManualSplit() {
+  _manualSplit.on = !_manualSplit.on;
+  _syncManualSplitUI();
+}
+function changeManualSplitCount(delta) {
+  _manualSplit.count = Math.max(2, (_manualSplit.count || 2) + delta);
+  _syncManualSplitUI();
+}
+function _resetManualSplit(on = false, count = 2) {
+  _manualSplit = { on: !!on, count: Math.max(2, parseInt(count, 10) || 2) };
+  _syncManualSplitUI();
+}
+function _syncManualSplitUI() {
+  const t = document.getElementById('split-toggle-manual');
+  if (!t) return;
+  t.classList.toggle('on', _manualSplit.on);
+  document.getElementById('split-count-wrap-manual').classList.toggle('hidden', !_manualSplit.on);
+  document.getElementById('split-count-val-manual').textContent = _manualSplit.count;
+  // 1人あたりの負担額（追加済みの商品の支払額 ÷ 人数、切り上げ）
+  const share = document.getElementById('manual-split-share');
+  const exp = manualItems.filter(i => i.entry_type !== 'income').reduce((s, i) => s + (i.price || 0), 0);
+  const inc = manualItems.filter(i => i.entry_type === 'income').reduce((s, i) => s + Math.abs(i.price || 0), 0);
+  const total = exp > 0 ? exp - inc : inc;
+  share.textContent = (_manualSplit.on && manualItems.length > 0)
+    ? `1人 ¥${Math.ceil(total / _manualSplit.count).toLocaleString()}`
+    : '';
 }
 
 // 店舗欄：支出の商品がある、または支出を入力中なら表示（収入だけのときは店舗なし）
@@ -12972,6 +13021,8 @@ async function saveManualReceipt() {
       total,
       entry_type: allIncome ? 'income' : 'expense',
       items: signedItems,
+      split_enabled: _manualSplit.on,
+      split_count: _manualSplit.count,
       manually_entered: true,
       saved_at: new Date().toISOString()
     });
@@ -13018,6 +13069,7 @@ async function addItemsToCurrentReceipt() {
   if (r.date) document.getElementById('manual-date').value = r.date;
   document.getElementById('manual-time').value = r.time || '';
   initStorePicker('manual', r.store || '');
+  _resetManualSplit(r.split_enabled, r.split_count);
   renderManualItems();
   _renderManualEditBanner(r);
 
@@ -13090,6 +13142,8 @@ async function _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId,
     items: signedItems,
     total: newSum + extra,
     entry_type: allIncome ? 'income' : 'expense',
+    split_enabled: _manualSplit.on,
+    split_count: _manualSplit.count,
     updated_at: new Date().toISOString()
   };
   // 店舗名は変えたときだけ更新（同じ店名ならブランド名・店IDもそのまま）
@@ -13219,6 +13273,8 @@ function clearManualEntry(opts = {}) {
   // 「クリア」したら既存レシートへの追加もやめる（詳細から開く処理の中で呼ぶときは保つ）
   if (!opts.keepEditTarget && _manualEditTargetId != null) _exitManualEditTarget();
   manualItems = [];
+  // 割り勘はレシートごとの設定なので、保存後・クリア後は引き継がずオフに戻す
+  _manualSplit = { on: false, count: 2 };
   document.getElementById('manual-store').value = '手入力';
   // 店舗選択UIをリセット
   _spSt('manual').selected = _spSt('manual').committed = '';
