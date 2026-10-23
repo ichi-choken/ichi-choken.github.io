@@ -5822,7 +5822,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 14:44';
+const APP_BUILD = '2026-10-23 14:45';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -9104,7 +9104,7 @@ function showYearlyMonthDetail(records, year, monthIdx) {
   if (monthRecords.length === 0) return;
 
   const monthLabel = (monthIdx + 1) + '月';
-  document.getElementById('yearly-detail-title').textContent = `${year}年${monthLabel} カテゴリ別支出`;
+  document.getElementById('yearly-detail-title').textContent = `${year}年${monthLabel} カテゴリ別${_statTypeWord()}`;
   document.getElementById('yearly-month-detail').style.display = 'block';
 
   // カテゴリ別集計（renderStats と同じロジック）
@@ -9539,7 +9539,7 @@ function renderStats(records) {
       });
     });
     Object.keys(largeMap).forEach(k => { largeMap[k] = Math.max(0, Math.ceil(largeMap[k])); });
-    renderBarChart(largeMap, '大カテゴリ別支出', false);
+    renderBarChart(largeMap, `大カテゴリ別${_statTypeWord()}`, false);
   } else {
     // largeDef未設定時は従来の中カテゴリ別
     const midMap = {};
@@ -9951,11 +9951,14 @@ async function renderIncomeCatReceipts(catName) {
   section.style.display = 'block';
 }
 
+// 集計中の種別の言葉（グラフの見出し用）
+function _statTypeWord() { return currentStatType === 'income' ? '収入' : '支出'; }
+
 // ===== 店別グラフ =====
 function renderStoreChart(storeMap, records) {
   currentStoreRecords = records;
   currentChartMap = storeMap;
-  currentChartTitle = '店別支出';
+  currentChartTitle = `店別${_statTypeWord()}`;
   currentIsDrill = false;
 
   document.getElementById('chart-title').textContent = currentChartTitle;
@@ -9976,7 +9979,7 @@ function renderStoreChart(storeMap, records) {
 
   if (currentChartType === 'pie') {
     // 円グラフは既存の renderChart に委譲
-    renderChart(storeMap, '店別支出', false);
+    renderChart(storeMap, currentChartTitle, false);
     return;
   }
 
