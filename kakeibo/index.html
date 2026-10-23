@@ -763,6 +763,15 @@
   }
   body.theme-light .detail-item-row.search-hit-row { background: #eef6f1; }
   .detail-item-row.search-dim-row { opacity: .4; }
+  /* 支出レシートに入った収入の商品（ポイント利用など） */
+  .detail-total-breakdown {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+    margin-top: 2px;
+  }
+  .income-item .detail-item-price, .income-item .item-price { color: var(--accent); }
 
 
 
@@ -4380,6 +4389,95 @@ function saveIncomeCategories(list) {
   localStorage.setItem(INCOME_CAT_KEY, JSON.stringify(list));
 }
 
+// ===== 支出と収入が混在するレシート =====
+// 1枚のレシートに支出の商品と収入の商品（ポイント利用など）を一緒に入れられる。
+//   - 商品が収入かどうかは「商品の entry_type が income」か「カテゴリが収入カテゴリ」で決まる
+//   - 収入の商品は金額をマイナスで保存する（レシートの合計＝実際に払った金額になる）
+//   - 集計では混在レシートを「支出分」「収入分」に分けて、それぞれ支出・収入に数える
+
+// ポイント利用を収入として記録するための収入カテゴリ。無ければ一度だけ追加する
+const INCOME_POINT_CAT = 'ポイント';
+function ensurePointIncomeCategory() {
+  try {
+    if (localStorage.getItem('income_cat_point_added')) return;
+    const list = loadIncomeCategories();
+    if (!list.includes(INCOME_POINT_CAT)) {
+      const i = list.indexOf('その他収入');
+      list.splice(i >= 0 ? i : list.length, 0, INCOME_POINT_CAT);
+      saveIncomeCategories(list);
+    }
+    localStorage.setItem('income_cat_point_added', '1');
+  } catch (e) {}
+}
+ensurePointIncomeCategory();
+
+// 収入カテゴリ名の集合（収入カテゴリ設定 ＋ カテゴリ定義で大カテゴリ「収入」に属する中カテゴリ）
+function incomeCategoryNames() {
+  const set = new Set(loadIncomeCategories());
+  try {
+    const ld = (largeDef || []).find(l => l.large === '収入');
+    if (ld && categoryDef) {
+      (ld.middles || []).forEach(id => {
+        const m = categoryDef.find(c => c.id === id);
+        if (m) set.add(m.middle);
+      });
+    }
+  } catch (e) {}
+  return set;
+}
+
+// 商品が収入か（names は incomeCategoryNames() の結果。繰り返し呼ぶときは渡すと速い）
+function itemIsIncome(r, item, names) {
+  if (!item) return false;
+  if (item.entry_type === 'income') return true;
+  names = names || incomeCategoryNames();
+  const mid = resolveMiddleName(item) || item.middle_category;
+  if (mid && names.has(mid)) return true;
+  if (item.entry_type === 'expense') return false;
+  return !!(r && r.entry_type === 'income');
+}
+
+// 商品を支出／収入に合わせて整える（収入：entry_type=income・金額マイナス・小カテゴリなし）
+function normalizeItemEntryType(item, isIncome) {
+  if (isIncome) {
+    item.entry_type = 'income';
+    item.price = -Math.abs(item.price || 0);
+    item.small_category = '';
+  } else if (item.entry_type === 'income') {
+    item.entry_type = 'expense';
+    item.price = Math.abs(item.price || 0);
+  }
+  return item;
+}
+// 支出レシート（スキャン・手入力・編集）の商品を、カテゴリに合わせて支出／収入に振り分ける
+function normalizeReceiptItemTypes(r) {
+  const names = incomeCategoryNames();
+  (r.items || []).forEach(it => normalizeItemEntryType(it, itemIsIncome(r, it, names)));
+  return r;
+}
+
+// 集計用：レシートを支出分・収入分に分ける（同じ id を持つ、集計・一覧表示専用のコピー）
+// 片方しかなければそのまま（中身が全部収入の支出レシートは entry_type を収入にしたコピー）
+function splitReceiptForStats(r, names) {
+  const items = r.items || [];
+  if (items.length === 0) return [r];
+  const inc = [], exp = [];
+  items.forEach(it => (itemIsIncome(r, it, names) ? inc : exp).push(it));
+  const type = r.entry_type === 'income' ? 'income' : 'expense';
+  if (inc.length === 0) return [type === 'expense' ? r : { ...r, entry_type: 'expense' }];
+  if (exp.length === 0) return [type === 'income' ? r : { ...r, entry_type: 'income', total: null }];
+  const incAbs = inc.reduce((s, i) => s + Math.abs(i.price || 0), 0);
+  return [
+    // 支出分の合計は「払った金額＋収入（ポイント利用など）」（税抜表示レシートの補正も保つ）
+    { ...r, entry_type: 'expense', items: exp, total: r.total ? r.total + incAbs : null, _part: 'expense' },
+    { ...r, entry_type: 'income',  items: inc, total: null, _part: 'income' },
+  ];
+}
+function splitReceiptsForStats(records) {
+  const names = incomeCategoryNames();
+  return records.flatMap(r => splitReceiptForStats(r, names));
+}
+
 function updateIncomeCatStatus() {
   const el = document.getElementById('income-cat-status');
   if (!el) return;
@@ -4602,13 +4700,16 @@ async function migrateIncomeCatName(oldName, newName) {
   let updated = 0;
 
   for (const r of all) {
-    if (r.entry_type !== 'income') continue;
+    const isIncomeReceipt = r.entry_type === 'income';
     let changed = false;
 
-    if (r.store === oldName)       { r.store = newName;       changed = true; }
-    if (r.store_brand === oldName) { r.store_brand = newName; changed = true; }
+    if (isIncomeReceipt && r.store === oldName)       { r.store = newName;       changed = true; }
+    if (isIncomeReceipt && r.store_brand === oldName) { r.store_brand = newName; changed = true; }
+    // 支出レシートに混ざった収入の商品（ポイント利用など）も名前を揃える
     (r.items || []).forEach(it => {
-      if (it.middle_category === oldName) { it.middle_category = newName; changed = true; }
+      if (it.middle_category === oldName && (isIncomeReceipt || it.entry_type === 'income')) {
+        it.middle_category = newName; changed = true;
+      }
     });
 
     if (changed) {
@@ -5551,7 +5652,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:09';
+const APP_BUILD = '2026-10-23 12:21';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6334,7 +6435,9 @@ ${knownStoreBrandsPromptText()}
 - 会員情報・税額明細・ポイント付与（獲得ポイント・ポイント残高）・「合計」「お会計」等の合計行はitemsに含めない
 - 割引・値引・クーポン・ポイント利用（ポイント支払い・ポイント充当）の行は、それぞれ独立した item として price をマイナスの数値で入れる（例：「値引 −50」→ price: -50、「ポイント利用 300」→ price: -300）。元の商品の price からは差し引かず、商品行はレシートに印字された金額のままにする
 - 割引系 item の name はレシートの表記どおり（例：「値引」「クーポン割引」「ポイント利用」）。quantity は 1
-- 割引系 item の middle_category / small_category は、特定の商品に対する割引ならその商品と同じカテゴリ、レシート全体に対する割引・クーポン・ポイント利用なら price が最も大きい商品と同じカテゴリにする
+- 値引・クーポンの item の middle_category / small_category は、特定の商品に対する割引ならその商品と同じカテゴリ、レシート全体に対する割引なら price が最も大きい商品と同じカテゴリにする
+- ポイント利用（ポイント支払い・ポイント充当）の item は収入として扱う：middle_category は "${INCOME_POINT_CAT}"、small_category は ""、"entry_type": "income" を付け、price はマイナスのまま
+- ほかにも収入にあたる行（キャッシュバックなど）は、収入カテゴリ（${[...incomeCategoryNames()].map(c => `"${c}"`).join('、')}）から選んで middle_category に入れ、"entry_type": "income" を付けて price はマイナスにする。収入カテゴリは通常の商品には使わない
 - items の price をすべて足した値が total（実際の支払い金額）と一致するようにする`;
 
     const _geminiUrl1 = `https://generativelanguage.googleapis.com/v1beta/models/${localStorage.getItem('gemini_model') || 'gemini-2.5-flash'}:generateContent?key=${apiKey}`;
@@ -6389,6 +6492,7 @@ ${prompt}`
     const clean = text.replace(/```json|```/g, '').trim();
     parsedData = JSON.parse(clean);
     stripTotalRowFromItems(parsedData);
+    _normalizeScannedIncomeItems(parsedData);
     // 店ブランドの表記ゆれを登録済みの表記に揃える（例：welcia → ウエルシア）。店名でないものは null
     parsedData.store = (parsedData.store && String(parsedData.store).trim() && !isNonStoreName(parsedData.store)) ? String(parsedData.store).trim() : null;
     parsedData.store_brand = cleanStoreBrand(parsedData.store_brand);
@@ -6441,6 +6545,23 @@ ${prompt}`
   }
 }
 
+// スキャン結果の収入の商品（ポイント利用など）を整える：
+// entry_type=income と言われたのに収入カテゴリでなければ「ポイント」か「その他収入」にし、金額はマイナスにそろえる
+function _normalizeScannedIncomeItems(data) {
+  if (!data || !Array.isArray(data.items)) return;
+  const names = incomeCategoryNames();
+  data.items.forEach(it => {
+    if (it.entry_type === 'income' && !names.has(it.middle_category)) {
+      it.middle_category = /ポイント|ﾎﾟｲﾝﾄ|point/i.test(it.name || '') && names.has(INCOME_POINT_CAT)
+        ? INCOME_POINT_CAT : 'その他収入';
+    }
+    if (it.entry_type !== 'income' && !names.has(it.middle_category)) delete it.entry_type;
+    const inc = names.has(it.middle_category);
+    if (inc) it.middle_category_id = null;
+    normalizeItemEntryType(it, inc);
+  });
+}
+
 // Geminiが「合計」行を商品として items に混入させてしまうケースへの対処。
 // 該当行を items から除外し、その金額を正式な合計として採用する（items の二重計上を防ぐ）。
 function stripTotalRowFromItems(data) {
@@ -6487,14 +6608,17 @@ function renderResult(data) {
 
   const ul = document.getElementById('res-items');
   ul.innerHTML = '';
+  const _incNames = incomeCategoryNames();
   (data.items || []).forEach((item, idx) => {
     const li = document.createElement('li');
-    li.className = 'item-row';
+    // 収入の商品（ポイント利用など）は同じレシートの中で区別して表示
+    const isInc = itemIsIncome(data, item, _incNames);
+    li.className = 'item-row' + (isInc ? ' income-item' : '');
     li.style.cursor = 'pointer';
     li.innerHTML = `
       <span class="item-name">${escHtml(item.name)}</span>
-      <span class="item-cat">${escHtml(resolveCatLabel(item))}</span>
-      <span class="item-price">${unitPriceHtml(item)}¥${(item.price || 0).toLocaleString()}</span>
+      <span class="item-cat">${isInc ? `💰 収入 › ${escHtml(item.middle_category || '')}` : escHtml(resolveCatLabel(item))}</span>
+      <span class="item-price">${unitPriceHtml(item)}${isInc ? `+¥${Math.abs(item.price || 0).toLocaleString()}` : `¥${(item.price || 0).toLocaleString()}`}</span>
       <button class="item-edit-btn" title="編集" onclick="openPreviewItemEdit(${idx}); event.stopPropagation();">✏️</button>
     `;
     li.addEventListener('click', () => openPreviewItemEdit(idx));
@@ -6686,10 +6810,12 @@ async function saveReceipt() {
     parsedData.store_brand = cleanStoreBrand(parsedData.store_brand);
     const storeBrandId = parsedData.store_brand ? autoRegisterStoreBrand(parsedData.store_brand) : null;
     // 各商品にmiddle_category_idを付与
-    const items = (parsedData.items || []).map(item => ({
-      ...withQuantity(item),
-      middle_category_id: midNameToId(item.middle_category) || null
-    }));
+    const _incNames = incomeCategoryNames();
+    const items = (parsedData.items || []).map(item => {
+      const it = { ...withQuantity(item), middle_category_id: midNameToId(item.middle_category) || null };
+      // 収入カテゴリ（ポイント利用など）の商品は、収入として同じレシートに入れる
+      return normalizeItemEntryType(it, itemIsIncome(parsedData, it, _incNames));
+    });
     await dbAdd('receipts', {
       ...parsedData,
       items,
@@ -7652,6 +7778,17 @@ function _renderDetail() {
   if (totalHit) totalEl.innerHTML = _markSearchHtml('¥' + displayTotal.toLocaleString(), searchQuery, true);
   else totalEl.textContent = '¥' + displayTotal.toLocaleString();
 
+  // 支出と収入が混在するレシートは内訳（支出 − 収入）を添える
+  const _incNames = incomeCategoryNames();
+  const mixedIncome = r.entry_type !== 'income';
+  const incomeOf = it => mixedIncome && itemIsIncome(r, it, _incNames);
+  const incAbs = (r.items || []).filter(incomeOf).reduce((s, i) => s + Math.abs(i.price || 0), 0);
+  if (incAbs > 0) {
+    const expSum = (r.items || []).filter(i => !incomeOf(i)).reduce((s, i) => s + (i.price || 0), 0);
+    totalEl.insertAdjacentHTML('beforeend',
+      `<span class="detail-total-breakdown">支出 ¥${expSum.toLocaleString()} − 💰収入 ¥${incAbs.toLocaleString()}</span>`);
+  }
+
   // 割り勘UIを同期
   _syncSplitBar(ctx);
 
@@ -7660,7 +7797,8 @@ function _renderDetail() {
     const div = document.createElement('div');
     const isHit = hitItems.has(item);
     // 一致した商品の行はハイライト、一致する商品があるレシートでは他の行を暗く
-    div.className = 'detail-item-row' +
+    const isIncomeItem = incomeOf(item);
+    div.className = 'detail-item-row' + (isIncomeItem ? ' income-item' : '') +
       (isHit ? ' search-hit-row' : (hitItems.size > 0 ? ' search-dim-row' : ''));
     const price = item.price || 0;
     const splitHtml = splitOn
@@ -7668,8 +7806,9 @@ function _renderDetail() {
       : '';
     const q = isHit ? searchQuery : '';
     const nameStr = item.name || '—';
-    const catStr = resolveCatLabel(item);
-    const priceStr = `¥${price.toLocaleString()}`;
+    // 支出レシート内の収入の商品は「💰 収入 › カテゴリ」と金額「+¥」で区別する
+    const catStr = isIncomeItem ? `💰 収入 › ${resolveMiddleName(item) || item.middle_category || ''}` : resolveCatLabel(item);
+    const priceStr = isIncomeItem ? `+¥${Math.abs(price).toLocaleString()}` : `¥${price.toLocaleString()}`;
     // 商品名・カテゴリ・金額のどこにも文字列として一致しない（表記ゆれ等）なら商品名全体にマーカー
     const anyLiteral = q && [nameStr, catStr, priceStr].some(t => _searchMarkRanges(t, q).length);
     div.innerHTML = `
@@ -7813,6 +7952,7 @@ function buildLargeCategorySelect(currentMiddle) {
 
   // currentMiddle が属している大カテゴリを初期選択
   let defaultLargeIdx = 0;
+  const incomeIdx = largeDef.findIndex(l => l.large === '収入');
   if (currentMiddle && categoryDef) {
     const midEntry = categoryDef.find(m => m.middle === currentMiddle);
     if (midEntry) {
@@ -7820,21 +7960,54 @@ function buildLargeCategorySelect(currentMiddle) {
       if (found !== -1) defaultLargeIdx = found;
     }
   }
+  // 収入カテゴリ（ポイントなど）の商品なら「収入」を初期選択
+  const isIncomeMid = !!currentMiddle && incomeCategoryNames().has(currentMiddle);
+  if (isIncomeMid) defaultLargeIdx = incomeIdx >= 0 ? incomeIdx : 'income';
 
   largeDef.forEach((ld, i) => {
     const opt = document.createElement('option');
     opt.value = i;
-    opt.textContent = ld.large;
+    opt.textContent = ld.large === '収入' ? '💰 収入' : ld.large;
     if (i === defaultLargeIdx) opt.selected = true;
     sel.appendChild(opt);
   });
+  // 大カテゴリ定義に「収入」が無くても、支出レシートの商品を収入（ポイント利用など）にできるようにする
+  if (incomeIdx < 0) {
+    const opt = document.createElement('option');
+    opt.value = 'income';
+    opt.textContent = '💰 収入';
+    if (defaultLargeIdx === 'income') opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+// 大カテゴリ select で「収入」が選ばれているか
+function _editLargeIsIncome() {
+  const v = document.getElementById('edit-item-large-cat').value;
+  if (v === 'income') return true;
+  const ld = largeDef && largeDef[parseInt(v)];
+  return !!(ld && ld.large === '収入');
 }
 
 // 大カテゴリ変更 → 中カテゴリselectを絞り込む
 function onLargeCategoryChange(currentMiddle) {
+  const sel = document.getElementById('edit-item-large');
+  // 「収入」：収入カテゴリ設定の名前（＋カテゴリ定義の収入の中カテゴリ）から選ぶ。小カテゴリは無し
+  if (_editLargeIsIncome()) {
+    const prev = currentMiddle !== undefined ? currentMiddle : sel.value;
+    sel.innerHTML = '';
+    [...incomeCategoryNames()].forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      if (name === prev) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    onMiddleCategoryChange();
+    return;
+  }
   const lIdx = parseInt(document.getElementById('edit-item-large-cat').value);
   const ld = largeDef[lIdx];
-  const sel = document.getElementById('edit-item-large');
   sel.innerHTML = '';
 
   // その大カテゴリに属する中カテゴリのid一覧から名前へ変換
@@ -7905,6 +8078,19 @@ function onMiddleCategoryChange(currentSmall) {
     ? currentSmall
     : (document.getElementById('edit-item-small')?.value || '');
   container.innerHTML = '';
+  // 収入カテゴリには小カテゴリが無い（ラベルごと隠す）
+  const smallLabel = container.previousElementSibling;
+  const isIncomeMid = incomeCategoryNames().has(middle);
+  container.style.display = isIncomeMid ? 'none' : '';
+  if (smallLabel) smallLabel.style.display = isIncomeMid ? 'none' : '';
+  if (isIncomeMid) {
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.id = 'edit-item-small';
+    hidden.value = '';
+    container.appendChild(hidden);
+    return;
+  }
 
   if (categoryDef) {
     const def = categoryDef.find(m => m.middle === middle);
@@ -8005,27 +8191,33 @@ async function saveItemEdit() {
   const newPrice = parseInt(document.getElementById('edit-item-price').value) || 0;
   const newQty   = Math.max(1, parseInt(document.getElementById('edit-item-qty').value, 10) || 1);
 
-  // 収入レシートかどうか（支出レシートのマイナス金額は割引・ポイント利用として扱う）
+  // 収入レシートかどうか（支出レシートのマイナス金額は割引として扱う）
   const isIncome = !isPreview && !!currentRecord && currentRecord.entry_type === 'income';
+  // 支出レシートでも、収入カテゴリ（ポイントなど）を選んだ商品は収入として同じレシートに入れる
+  const itemIncome = !isIncome && incomeCategoryNames().has(newMid);
 
   if (isPreview) {
+    let item;
     if (previewEditItemIndex !== null) {
-      const item = parsedData.items[previewEditItemIndex];
+      item = parsedData.items[previewEditItemIndex];
       item.name = newName || item.name;
       item.middle_category = newMid;
-      item.middle_category_id = isIncome ? null : (midNameToId(newMid) || null);
-      if (!isIncome) item.small_category = newSmall || item.small_category;
+      item.middle_category_id = itemIncome ? null : (midNameToId(newMid) || null);
+      item.small_category = newSmall || (itemIncome ? '' : item.small_category);
       item.price = newPrice;
       item.quantity = newQty;
     } else {
-      parsedData.items.push({
+      item = {
         name: newName || '新しい商品',
         middle_category: newMid,
-        small_category: isIncome ? '' : newSmall,
+        middle_category_id: itemIncome ? null : (midNameToId(newMid) || null),
+        small_category: newSmall,
         price: newPrice,
         quantity: newQty
-      });
+      };
+      parsedData.items.push(item);
     }
+    normalizeItemEntryType(item, itemIncome);
     parsedData.total = parsedData.items.reduce((s, i) => s + (i.price || 0), 0);
     closeModal('item-edit-modal');
     renderResult(parsedData);
@@ -8033,11 +8225,13 @@ async function saveItemEdit() {
     const item = currentRecord.items[currentItemIndex];
     item.name = newName || item.name;
     item.middle_category = newMid;
-    item.middle_category_id = isIncome ? null : (midNameToId(item.middle_category) || null);
-    if (!isIncome) item.small_category = newSmall || item.small_category;
+    item.middle_category_id = (isIncome || itemIncome) ? null : (midNameToId(item.middle_category) || null);
+    if (!isIncome) item.small_category = newSmall || (itemIncome ? '' : item.small_category);
     item.price = newPrice;
     item.quantity = newQty;
     item.manually_categorized = true;
+    // 支出レシート内の商品：収入カテゴリなら収入（金額はマイナス）、それ以外は支出
+    if (!isIncome) normalizeItemEntryType(item, itemIncome);
     currentRecord.total = currentRecord.items.reduce((s, i) => s + (i.price || 0), 0);
     await dbPut('receipts', currentRecord);
     closeModal('item-edit-modal');
@@ -8444,11 +8638,12 @@ function getPeriodRange(period) {
 
 function filterByPeriod(records, period) {
   const { from, to } = getPeriodRange(period);
-  return records.filter(r => {
+  // 集計専用：支出と収入が混在するレシートは「支出分」「収入分」に分けて返す
+  return splitReceiptsForStats(records.filter(r => {
     if (!r.date) return true;
     const d = new Date(r.date);
     return d >= from && d <= to;
-  });
+  }));
 }
 
 function setPeriod(period) {
@@ -8637,10 +8832,11 @@ function closeYearlyDetail() {
 
 async function loadYearlyStats(year) {
   const all = await dbGetAll('receipts');
-  let yearlyRecordsAll = all.filter(r => {
+  // 支出と収入が混在するレシートは「支出分」「収入分」に分けて集計する
+  let yearlyRecordsAll = splitReceiptsForStats(all.filter(r => {
     if (!r.date) return false;
     return new Date(r.date).getFullYear() === year;
-  });
+  }));
 
   // 収支バー更新（年間全レコード対象）
   updateBalanceBar(yearlyRecordsAll);
@@ -10121,7 +10317,14 @@ let _statsListRerender = null;
 async function _refreshRecords(records) {
   const all = await dbGetAll('receipts');
   const byId = new Map(all.map(r => [r.id, r]));
-  return records.map(r => byId.get(r.id)).filter(Boolean);
+  // 混在レシートの「支出分」「収入分」は、最新の内容から同じ側を取り直す
+  const names = incomeCategoryNames();
+  return records.map(r => {
+    const latest = byId.get(r.id);
+    if (!latest) return null;
+    const parts = splitReceiptForStats(latest, names);
+    return parts.find(p => p.entry_type === r.entry_type) || parts[0];
+  }).filter(Boolean);
 }
 
 // 内部でDBを読み直す描画関数（引数にレコードを取らない）
@@ -11294,9 +11497,12 @@ async function recategorizeReceipt(id, btn, opts = {}) {
     // 有効な中カテゴリ名の配列（Geminiへの明示的な制約）
     const validMidList = categoryDef.map(m => `"${m.middle}"`).join(', ');
 
-    const targetIdx = Array.isArray(opts.onlyIndices)
+    // 収入の商品（ポイント利用など）は再カテゴライズしない（支出カテゴリに移ると収入から消えるため）
+    const _incNames = incomeCategoryNames();
+    const targetIdx = (Array.isArray(opts.onlyIndices)
       ? opts.onlyIndices.filter(i => record.items[i])
-      : record.items.map((_, i) => i);
+      : record.items.map((_, i) => i)
+    ).filter(i => !itemIsIncome(record, record.items[i], _incNames));
     if (targetIdx.length === 0) { btn.classList.remove('spinning'); recatActiveCount--; return; }
     const itemLines = targetIdx.map(i => `${i}: ${record.items[i].name || '（名称なし）'}`).join('\n');
     const store = record.store || '';
@@ -11346,6 +11552,7 @@ ${largeHintText}
 - small_category はその中カテゴリの小カテゴリ一覧の文字列を一字一句そのまま使うこと
 - リストにない文字列を絶対に作らないこと（「交通-」「交通（新幹線）」などNG）
 - どれにも当てはまらない場合のみ middle_category="その他", small_category="その他" を使うこと
+- 【収入】に属する中カテゴリは使わないこと（ここに並ぶのは支出の商品だけ）
 - 全商品を必ず分類すること
 
 また、店名から store_brand（チェーン・ブランド名）も抽出してください。
@@ -11425,8 +11632,8 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
       let mid = middle_category;
       let sm = small_category;
 
-      // 中カテゴリが定義に存在しない場合→「その他」
-      if (!midNames.includes(mid)) {
+      // 中カテゴリが定義に存在しない・収入カテゴリの場合→「その他」
+      if (!midNames.includes(mid) || _incNames.has(mid)) {
         mid = 'その他';
         sm = 'その他';
       } else {
@@ -12472,13 +12679,16 @@ function addManualItem() {
   let autoCat = false;
   try { autoCat = !selVal && _manualEntryType === 'expense'; } catch (_) {}
 
+  // 支出／収入は商品ごとに持つ（同じレシートに支出の商品と収入の商品を混在できる）
+  const isIncomeItem = _manualEntryType === 'income';
   manualItems.push({
     name,
     middle_category: middle,
-    middle_category_id: middleId || midNameToId(middle) || null,
-    small_category: _manualSmall || '',
+    middle_category_id: isIncomeItem ? null : (middleId || midNameToId(middle) || null),
+    small_category: isIncomeItem ? '' : (_manualSmall || ''),
     price,
     quantity,
+    entry_type: isIncomeItem ? 'income' : 'expense',
     ...(autoCat ? { _autoCat: true } : {})
   });
   nameEl.value = '';
@@ -12497,25 +12707,39 @@ function deleteManualItem(idx) {
 function renderManualItems() {
   const ul = document.getElementById('manual-items-list');
   ul.innerHTML = '';
+  _syncManualStoreArea();
   if (manualItems.length === 0) {
     document.getElementById('manual-total').textContent = '¥0';
     return;
   }
   manualItems.forEach((item, idx) => {
     const li = document.createElement('li');
-    li.className = 'manual-item-row';
+    const isInc = item.entry_type === 'income';
+    li.className = 'manual-item-row' + (isInc ? ' income-item' : '');
     li.innerHTML = `
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;word-break:break-all;">${escHtml(item.name) || '<span style="color:var(--text-dim);">商品名なし</span>'}</div>
-        <span class="item-cat">${escHtml(resolveCatLabel(item))}</span>
+        <span class="item-cat">${isInc ? '💰 収入 › ' : ''}${escHtml(resolveCatLabel(item))}</span>
       </div>
-      <span class="item-price" style="font-family:'Space Mono',monospace;white-space:nowrap;">${unitPriceHtml(item)}¥${(item.price||0).toLocaleString()}</span>
+      <span class="item-price" style="font-family:'Space Mono',monospace;white-space:nowrap;">${unitPriceHtml(item)}${isInc ? `+¥${Math.abs(item.price||0).toLocaleString()}` : `¥${(item.price||0).toLocaleString()}`}</span>
       <button class="manual-item-del" onclick="deleteManualItem(${idx})" title="削除">✕</button>
     `;
     ul.appendChild(li);
   });
-  const total = manualItems.reduce((s, i) => s + (i.price || 0), 0);
-  document.getElementById('manual-total').textContent = '¥' + total.toLocaleString();
+  // 合計は支払額（支出 − 収入）。収入だけなら収入額
+  const exp = manualItems.filter(i => i.entry_type !== 'income').reduce((s, i) => s + (i.price || 0), 0);
+  const inc = manualItems.filter(i => i.entry_type === 'income').reduce((s, i) => s + Math.abs(i.price || 0), 0);
+  const total = exp > 0 ? exp - inc : inc;
+  document.getElementById('manual-total').textContent = '¥' + total.toLocaleString() +
+    (exp > 0 && inc > 0 ? `（支出 ¥${exp.toLocaleString()} − 収入 ¥${inc.toLocaleString()}）` : '');
+}
+
+// 店舗欄：支出の商品がある、または支出を入力中なら表示（収入だけのときは店舗なし）
+function _syncManualStoreArea() {
+  const storeArea = document.getElementById('manual-store-area');
+  if (!storeArea) return;
+  const hasExpense = manualItems.some(i => i.entry_type !== 'income');
+  storeArea.style.display = (_manualEntryType === 'expense' || hasExpense) ? 'block' : 'none';
 }
 
 async function saveManualReceipt() {
@@ -12527,8 +12751,10 @@ async function saveManualReceipt() {
     showManualStatus('error', '商品名か金額を入力してください');
     return;
   }
+  // 収入の商品だけなら収入レシート、支出の商品が1つでもあれば支出レシート（収入の商品も同じレシートに入れる）
+  const allIncome = manualItems.every(it => it.entry_type === 'income');
   // 「追加」欄に確定前の店舗名があれば、似ている店舗名の確認をしてから保存する
-  if (_manualEntryType !== 'income' && _spSt('manual').mode === 'input') {
+  if (!allIncome && _spSt('manual').mode === 'input') {
     const txt = document.getElementById('manual-store-text');
     if (txt && txt.value.trim()) {
       txt.blur();
@@ -12541,9 +12767,7 @@ async function saveManualReceipt() {
   }
   let store = document.getElementById('manual-store').value.trim();
 
-  if (_manualEntryType === 'income') {
-    // 収入：件名は選択中のカテゴリ名
-    const catLabel = document.getElementById('manual-cat-label');
+  if (allIncome) {
     // 収入は店ではないので店名は null（表示側でカテゴリ名を出す）
     store = null;
   } else if (!store || store === '手入力' || store === '店舗を選択') {
@@ -12563,13 +12787,14 @@ async function saveManualReceipt() {
     const storeBrand = store ? cleanStoreBrand(store) : null;
     const storeBrandId = storeBrand ? autoRegisterStoreBrand(storeBrand) : null;
     // 収入の場合は price を負値にして保存（集計で区別）
-  const sign = _manualEntryType === 'income' ? -1 : 1;
   // 自動カテゴライズ対象の商品 index を控え、保存データからは印を外す
   const autoCatIdx = [];
   const signedItems = manualItems.map((it, i) => {
     const { _autoCat, ...rest } = it;
     if (_autoCat) autoCatIdx.push(i);
-    return { ...rest, price: (rest.price || 0) * sign, entry_type: _manualEntryType };
+    const type = rest.entry_type === 'income' ? 'income' : 'expense';
+    // 収入はマイナスで保存。支出は入力どおり（値引きのマイナス入力もそのまま）
+    return { ...rest, price: type === 'income' ? -Math.abs(rest.price || 0) : (rest.price || 0), entry_type: type };
   });
   const total = signedItems.reduce((s, i) => s + (i.price || 0), 0);
     const newId = await dbAdd('receipts', {
@@ -12579,7 +12804,7 @@ async function saveManualReceipt() {
       date,
       time,
       total,
-      entry_type: _manualEntryType,
+      entry_type: allIncome ? 'income' : 'expense',
       items: signedItems,
       manually_entered: true,
       saved_at: new Date().toISOString()
@@ -12632,9 +12857,8 @@ function setManualEntryType(type) {
   const isExpense = type === 'expense';
   document.getElementById('entry-type-expense').classList.toggle('active', isExpense);
   document.getElementById('entry-type-income').classList.toggle('active', !isExpense);
-  // 店舗エリア：収入時は非表示
-  const storeArea = document.getElementById('manual-store-area');
-  if (storeArea) storeArea.style.display = isExpense ? 'block' : 'none';
+  // 店舗エリア：収入だけのレシートでは非表示（支出の商品を積んでいれば表示したまま）
+  _syncManualStoreArea();
   // ラベル切り替え
   const label = document.querySelector('#manual-large-row .modal-label');
   if (label) label.textContent = isExpense ? '支出' : '収入';
