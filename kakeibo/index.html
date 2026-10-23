@@ -2023,7 +2023,7 @@
       <!-- 支出 -->
       <div id="manual-large-row" style="margin-bottom:12px;">
         <div style="margin-bottom:4px;">
-          <div class="modal-label">支出</div>
+          <div class="modal-label">支出<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリ未選択の場合は自動で振り分け）</span></div>
         </div>
 
         <!-- カテゴリ ドロップダウン -->
@@ -2109,18 +2109,11 @@
       <!-- 店舗名 -->
       <div id="manual-store-area" style="margin-bottom:12px;">
         <div class="modal-label" style="margin-bottom:4px;">店舗名<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（オプション）</span></div>
-        <!-- 一覧から選択 / 追加 切り替えタブ -->
-        <div style="display:flex;gap:6px;margin-bottom:6px;">
-          <button id="store-mode-select-btn" onclick="setStoreMode('select')"
-            style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--btn-on-accent,#111);font-family:inherit;cursor:pointer;font-weight:700;">一覧から選択</button>
-          <button id="store-mode-input-btn" onclick="setStoreMode('input')"
-            style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;cursor:pointer;">追加</button>
-        </div>
         <!-- 選択モード -->
         <div id="store-select-wrap" style="position:relative;">
           <div style="display:flex;align-items:center;
                    background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
-            <input type="text" id="store-search-input" placeholder="店舗を選択（文字入力で候補表示）"
+            <input type="text" id="store-search-input" placeholder="店舗を選択（新規はEnterで追加）"
               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
               enterkeyhint="done" role="combobox" aria-autocomplete="list" aria-controls="store-select-list"
               onfocus="openStoreDropdown()" oninput="onStoreSearchInput()" onkeydown="onStoreSearchKeydown(event)" onblur="onStoreSearchBlur()"
@@ -2134,7 +2127,8 @@
                margin-top:4px;z-index:102;overflow-y:auto;max-height:200px;">
           </div>
         </div>
-        <!-- 追加モード（新しい店舗名を入力して登録する） -->
+        <div id="store-add-msg" style="display:none;font-size:12px;margin-top:4px;"></div>
+        <!-- 追加モード（旧UI。今は使わず非表示のまま。新しい店名は選択欄で Enter して追加する） -->
         <div id="store-input-wrap" style="display:none;">
           <div style="display:flex;gap:6px;">
             <input type="text" id="manual-store-text" placeholder="追加する店舗名を入力"
@@ -2145,7 +2139,6 @@
             <button type="button" id="store-add-btn" onclick="confirmStoreAdd()"
               style="flex-shrink:0;padding:0 14px;font-size:13px;border-radius:6px;border:1px solid var(--accent);background:none;color:var(--accent);font-family:inherit;cursor:pointer;font-weight:700;">追加</button>
           </div>
-          <div id="store-add-msg" style="display:none;font-size:12px;margin-top:4px;"></div>
         </div>
       </div>
 
@@ -2490,17 +2483,11 @@
     <!-- 通常：店舗名（追加タブと同じ「一覧から選択 / 追加」） -->
     <div id="edit-store-text-row">
       <div class="modal-label" style="margin-bottom:4px;">店舗名</div>
-      <div style="display:flex;gap:6px;margin-bottom:6px;">
-        <button type="button" id="edit-store-mode-select-btn" onclick="setStoreMode('select','edit')"
-          style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--btn-on-accent,#111);font-family:inherit;cursor:pointer;font-weight:700;">一覧から選択</button>
-        <button type="button" id="edit-store-mode-input-btn" onclick="setStoreMode('input','edit')"
-          style="flex:1;padding:5px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;cursor:pointer;">追加</button>
-      </div>
       <!-- 選択モード -->
       <div id="edit-store-select-wrap" style="position:relative;">
         <div style="display:flex;align-items:center;
                  background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
-          <input type="text" id="edit-store-search-input" placeholder="店舗を選択（文字入力で候補表示）"
+          <input type="text" id="edit-store-search-input" placeholder="店舗を選択（新規はEnterで追加）"
             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
             enterkeyhint="done" role="combobox" aria-autocomplete="list" aria-controls="edit-store-select-list"
             onfocus="openStoreDropdown('edit')" oninput="onStoreSearchInput('edit')" onkeydown="onStoreSearchKeydown(event,'edit')" onblur="onStoreSearchBlur('edit')"
@@ -2514,7 +2501,8 @@
              margin-top:4px;z-index:102;overflow-y:auto;max-height:200px;">
         </div>
       </div>
-      <!-- 追加モード（新しい店舗名を入力して登録する） -->
+      <div id="edit-store-add-msg" style="display:none;font-size:12px;margin-top:4px;"></div>
+      <!-- 追加モード（旧UI。今は使わず非表示のまま。新しい店名は選択欄で Enter して追加する） -->
       <div id="edit-store-input-wrap" style="display:none;">
         <div style="display:flex;gap:6px;">
           <input type="text" id="edit-store-text" placeholder="追加する店舗名を入力"
@@ -2525,7 +2513,6 @@
             style="flex-shrink:0;padding:0 14px;font-size:13px;border-radius:6px;border:1px solid var(--accent);background:none;color:var(--accent);font-family:inherit;cursor:pointer;font-weight:700;">追加</button>
         </div>
       </div>
-      <div id="edit-store-add-msg" style="display:none;font-size:12px;margin-top:4px;"></div>
     </div>
     <!-- 収入：カテゴリ選択 -->
     <div id="edit-income-cat-row" style="display:none;">
@@ -5818,7 +5805,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 12:42';
+const APP_BUILD = '2026-10-23 12:46';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -13203,7 +13190,8 @@ function setManualEntryType(type) {
   _syncManualStoreArea();
   // ラベル切り替え
   const label = document.querySelector('#manual-large-row .modal-label');
-  if (label) label.textContent = isExpense ? '支出' : '収入';
+  // 支出は中カテゴリ未選択なら保存後に自動カテゴライズされることを添える
+  if (label) label.innerHTML = isExpense ? '支出<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリ未選択の場合は自動で振り分け）</span>' : '収入';
 
   const INCOME_NAMES = loadIncomeCategories();
   const catList  = document.getElementById('manual-cat-list');
@@ -13485,7 +13473,14 @@ function onStoreSearchKeydown(e, key = 'manual') {
     if (list.style.display !== 'none') { e.stopPropagation(); closeStoreDropdown(key); }
     return;
   }
-  if (!opts.length) return;
+  // 一覧にない名前で候補も1件もないときに限り、Enter で「追加しますか？」を確認して追加する
+  if (!opts.length) {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      addStoreFromSearch(key);
+    }
+    return;
+  }
   let cur = opts.findIndex(el => el.classList.contains('kbd-focus'));
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
@@ -13708,6 +13703,22 @@ function _showStoreAddMsg(text, isError, key = 'manual') {
   el.style.display = text ? 'block' : 'none';
 }
 
+// 選択欄に入力した新しい店名を、確認のうえ店舗一覧に追加して選択する（候補が無いときの Enter）
+async function addStoreFromSearch(key = 'manual') {
+  const input = _spEl(key, 'search-input');
+  const raw = input ? input.value.trim() : '';
+  if (!raw) return;
+  closeStoreDropdown(key);
+  if (input) input.blur(); // スマホのキーボードを閉じてから確認を出す（未確定の入力はいったん元に戻る）
+  _showStoreAddMsg('', false, key);
+  const res = await _resolveStoreToAdd(raw);
+  if (res.status === 'invalid') { _showStoreAddMsg(`「${res.name}」は店舗名として登録できません`, true, key); return; }
+  if (res.status !== 'ok') return; // キャンセル・確認中
+  _applyAddedStore(res.name, key);
+  _showStoreAddMsg(res.existed ? `登録済みの「${res.name}」を選択しました` : `「${res.name}」を店舗一覧に追加しました`, false, key);
+  setTimeout(() => _showStoreAddMsg('', false, key), 4000);
+}
+
 // 「追加」ボタン（または入力欄で Enter）
 async function confirmStoreAdd(key = 'manual') {
   const txt = document.getElementById(_spCfg(key).textId);
@@ -13734,7 +13745,7 @@ function rebuildStoreDropdown(query, key = 'manual') {
     div.textContent = text;
     list.appendChild(div);
   };
-  if (stores.length === 0) { msg('登録済み店舗がありません'); return; }
+  if (stores.length === 0) { msg(query && query.trim() ? `Enterで「${query.trim()}」を新しい店舗として追加` : '登録済み店舗がありません（店名を入力してEnterで追加）'); return; }
 
   const q = _normStoreText(query);
   let hits = stores;
@@ -13745,7 +13756,7 @@ function rebuildStoreDropdown(query, key = 'manual') {
       .sort((a, b) => (a.n.startsWith(q) ? 0 : 1) - (b.n.startsWith(q) ? 0 : 1))
       .map(x => x.s);
   }
-  if (hits.length === 0) { msg('該当する店舗がありません（「追加」で新しい店名を登録できます）'); return; }
+  if (hits.length === 0) { msg(`該当する店舗がありません（Enterで「${query.trim()}」を新しい店舗として追加）`); return; }
 
   const selected = _spSt(key).selected;
   hits.forEach(s => {
