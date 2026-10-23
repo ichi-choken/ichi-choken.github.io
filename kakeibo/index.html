@@ -1075,6 +1075,21 @@
     font-size: 13px;
   }
   .split-bar-label { color: var(--text-dim); flex-shrink: 0; }
+  /* 店舗選択欄の右端「追加」ボタン */
+  .store-add-inline-btn {
+    flex-shrink: 0;
+    margin: 4px 6px 4px 0;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: inherit;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: none;
+    color: var(--accent);
+    cursor: pointer;
+    white-space: nowrap;
+  }
   /* 手入力フォーム内の割り勘（カードの中なので枠・背景なし） */
   .split-bar.manual-split-bar { padding: 4px 0 10px; background: none; border-bottom: none; flex-wrap: wrap; }
   .manual-split-share { margin-left: auto; font-size: 12px; color: var(--text-dim); font-family: 'Space Mono', monospace; }
@@ -2113,7 +2128,7 @@
         <div id="store-select-wrap" style="position:relative;">
           <div style="display:flex;align-items:center;
                    background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
-            <input type="text" id="store-search-input" placeholder="店舗を選択（新規はEnterで追加）"
+            <input type="text" id="store-search-input" placeholder="店舗を選択"
               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
               enterkeyhint="done" role="combobox" aria-autocomplete="list" aria-controls="store-select-list"
               onfocus="openStoreDropdown()" oninput="onStoreSearchInput()" onkeydown="onStoreSearchKeydown(event)" onblur="onStoreSearchBlur()"
@@ -2121,6 +2136,7 @@
                      padding:10px 12px;color:var(--text);font-size:16px;font-family:inherit;">
             <span id="store-select-arrow" onmousedown="event.preventDefault()" onclick="toggleStoreDropdown()"
               style="flex-shrink:0;padding:10px 12px;font-size:12px;color:var(--text-dim);cursor:pointer;">▼</span>
+            <button type="button" class="store-add-inline-btn" onmousedown="event.preventDefault()" onclick="addStoreFromButton('manual')" title="入力した店名を店舗一覧に追加">追加</button>
           </div>
           <div id="store-select-list" style="display:none;position:absolute;top:100%;left:0;right:0;
                background:var(--surface2);border:1px solid var(--border);border-radius:6px;
@@ -2487,7 +2503,7 @@
       <div id="edit-store-select-wrap" style="position:relative;">
         <div style="display:flex;align-items:center;
                  background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
-          <input type="text" id="edit-store-search-input" placeholder="店舗を選択（新規はEnterで追加）"
+          <input type="text" id="edit-store-search-input" placeholder="店舗を選択"
             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
             enterkeyhint="done" role="combobox" aria-autocomplete="list" aria-controls="edit-store-select-list"
             onfocus="openStoreDropdown('edit')" oninput="onStoreSearchInput('edit')" onkeydown="onStoreSearchKeydown(event,'edit')" onblur="onStoreSearchBlur('edit')"
@@ -2495,6 +2511,7 @@
                    padding:10px 12px;color:var(--text);font-size:16px;font-family:inherit;">
           <span id="edit-store-select-arrow" onmousedown="event.preventDefault()" onclick="toggleStoreDropdown('edit')"
             style="flex-shrink:0;padding:10px 12px;font-size:12px;color:var(--text-dim);cursor:pointer;">▼</span>
+          <button type="button" class="store-add-inline-btn" onmousedown="event.preventDefault()" onclick="addStoreFromButton('edit')" title="入力した店名を店舗一覧に追加">追加</button>
         </div>
         <div id="edit-store-select-list" style="display:none;position:absolute;top:100%;left:0;right:0;
              background:var(--surface2);border:1px solid var(--border);border-radius:6px;
@@ -5805,7 +5822,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-23 14:39';
+const APP_BUILD = '2026-10-23 14:44';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -13705,7 +13722,21 @@ function _showStoreAddMsg(text, isError, key = 'manual') {
   el.style.display = text ? 'block' : 'none';
 }
 
-// 選択欄に入力した新しい店名を、確認のうえ店舗一覧に追加して選択する（候補が無いときの Enter）
+// 選択欄右の「追加」ボタン：入力中の店名を（候補の有無にかかわらず）確認して追加する
+function addStoreFromButton(key = 'manual') {
+  const input = _spEl(key, 'search-input');
+  const raw = input ? input.value.trim() : '';
+  // 未入力、または確定済みの店名のまま押したときは、新しい店名の入力を促す
+  if (!raw || raw === _spSt(key).selected) {
+    if (input) { input.value = ''; input.focus(); }
+    _showStoreAddMsg('追加する店舗名を入力して「追加」を押してください', false, key);
+    setTimeout(() => _showStoreAddMsg('', false, key), 4000);
+    return;
+  }
+  addStoreFromSearch(key);
+}
+
+// 選択欄に入力した新しい店名を、確認のうえ店舗一覧に追加して選択する（候補が無いときの Enter・「追加」ボタン）
 async function addStoreFromSearch(key = 'manual') {
   const input = _spEl(key, 'search-input');
   const raw = input ? input.value.trim() : '';
@@ -13747,7 +13778,7 @@ function rebuildStoreDropdown(query, key = 'manual') {
     div.textContent = text;
     list.appendChild(div);
   };
-  if (stores.length === 0) { msg(query && query.trim() ? `Enterで「${query.trim()}」を新しい店舗として追加` : '登録済み店舗がありません（店名を入力してEnterで追加）'); return; }
+  if (stores.length === 0) { msg(query && query.trim() ? `Enter か「追加」で「${query.trim()}」を新しい店舗として追加` : '登録済み店舗がありません（店名を入力して「追加」）'); return; }
 
   const q = _normStoreText(query);
   let hits = stores;
@@ -13758,7 +13789,7 @@ function rebuildStoreDropdown(query, key = 'manual') {
       .sort((a, b) => (a.n.startsWith(q) ? 0 : 1) - (b.n.startsWith(q) ? 0 : 1))
       .map(x => x.s);
   }
-  if (hits.length === 0) { msg(`該当する店舗がありません（Enterで「${query.trim()}」を新しい店舗として追加）`); return; }
+  if (hits.length === 0) { msg(`該当する店舗がありません（Enter か「追加」で「${query.trim()}」を新しい店舗として追加）`); return; }
 
   const selected = _spSt(key).selected;
   hits.forEach(s => {
