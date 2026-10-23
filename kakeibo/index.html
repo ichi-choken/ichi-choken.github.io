@@ -727,6 +727,42 @@
     border-radius: 3px;
     padding: 0 2px;
   }
+  /* 検索語の一致箇所に引くマーカー */
+  mark.search-mark {
+    background: rgba(200,255,87,0.42);
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 1px;
+    font-weight: 700;
+  }
+  body.theme-light mark.search-mark { background: #ffe066; }
+  /* 検索で一致したレシート（カレンダーの日別パネル）／一致しないレシートは暗く */
+  .history-item.search-hit-item {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+    background: rgba(200,255,87,0.07);
+  }
+  body.theme-light .history-item.search-hit-item { background: #eef6f1; }
+  .history-item.search-dim { opacity: .35; }
+  /* 店名の下に出す「一致した商品・項目」 */
+  .search-hit-items {
+    font-size: 12px;
+    color: var(--text);
+    margin-top: 4px;
+    line-height: 1.7;
+    word-break: break-all;
+  }
+  .search-hit-items .search-hit-line { display: block; }
+  .search-hit-items .search-hit-sub { color: var(--text-dim); font-size: 11px; }
+  /* レシート詳細：一致した商品の行をハイライト、一致しない行は暗く */
+  .detail-item-row.search-hit-row {
+    background: rgba(200,255,87,0.08);
+    box-shadow: inset 3px 0 0 var(--accent);
+    border-radius: 6px;
+    padding-left: 10px;
+  }
+  body.theme-light .detail-item-row.search-hit-row { background: #eef6f1; }
+  .detail-item-row.search-dim-row { opacity: .4; }
 
 
 
@@ -5515,7 +5551,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-16 16:13';
+const APP_BUILD = '2026-10-23 12:05';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6803,10 +6839,105 @@ function buildReceiptSearcher(query) {
   };
 }
 
+// ===== 検索の一致箇所にマーカーを引く =====
+// text のうち query に一致する範囲を [開始, 終了) の配列で返す（text の文字位置）
+// 一致判定は検索（_histSearchNorm）と同じ正規化：かなカナ・全角半角・大小文字・空白や記号の違いを無視
+function _searchMarkRanges(text, query) {
+  const q = _histSearchNorm(query);
+  const s = String(text ?? '');
+  if (!q || !s) return [];
+  // 1文字ずつ正規化する（半角ｶﾞの「ﾞ」などの結合文字は前の文字とまとめて正規化）
+  const units = [];
+  let off = 0;
+  for (const ch of s) {
+    const isComb = /^\p{M}/u.test(ch.normalize('NFKC'));
+    if (isComb && units.length) units[units.length - 1].end += ch.length;
+    else units.push({ start: off, end: off + ch.length });
+    off += ch.length;
+  }
+  // 正規化後の各文字が元のどの文字（unit）から来たかの対応表
+  let norm = '';
+  const map = [];
+  units.forEach((u, i) => {
+    const n = _histSearchNorm(s.slice(u.start, u.end));
+    norm += n;
+    for (let k = 0; k < n.length; k++) map.push(i);
+  });
+  const ranges = [];
+  let from = 0, idx;
+  while ((idx = norm.indexOf(q, from)) !== -1) {
+    const a = units[map[idx]].start;
+    const b = units[map[idx + q.length - 1]].end;
+    const last = ranges[ranges.length - 1];
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else ranges.push([a, b]);
+    from = idx + q.length;
+  }
+  return ranges;
+}
+
+// 一致箇所を <mark class="search-mark"> で囲んだHTML（text はエスケープ前の文字列）
+// whole=true なら、文字列としては一致しない場合（別表記での一致など）に全体へマーカーを引く
+function _markSearchHtml(text, query, whole = false) {
+  const s = String(text ?? '');
+  const ranges = query ? _searchMarkRanges(s, query) : [];
+  if (!ranges.length) {
+    return whole && s ? `<mark class="search-mark">${escHtml(s)}</mark>` : escHtml(s);
+  }
+  let out = '', last = 0;
+  ranges.forEach(([a, b]) => {
+    out += escHtml(s.slice(last, a)) + `<mark class="search-mark">${escHtml(s.slice(a, b))}</mark>`;
+    last = b;
+  });
+  return out + escHtml(s.slice(last));
+}
+
+// 店名の表示HTML（店名で一致していればマーカー。別表記での一致なら店名全体に）
+function _searchStoreHtml(r, query, storeHit) {
+  const name = storeDisplayName(r);
+  return storeHit ? _markSearchHtml(name, query, true) : escHtml(name);
+}
+
+// 一致した商品1件の表示HTML：商品名に一致箇所があれば商品名に、カテゴリや金額での一致ならその部分に添えてマーカー
+function _searchItemLabelHtml(item, query) {
+  const name = item.name || '—';
+  if (_searchMarkRanges(name, query).length) return _markSearchHtml(name, query);
+  const cat = resolveCatLabel(item) || '';
+  if (_searchMarkRanges(cat, query).length) {
+    return `${escHtml(name)} <span class="search-hit-sub">（${_markSearchHtml(cat, query)}）</span>`;
+  }
+  const priceStr = `¥${(item.price || 0).toLocaleString()}`;
+  if (_searchMarkRanges(priceStr, query).length) {
+    return `${escHtml(name)} <span class="search-hit-sub">（${_markSearchHtml(priceStr, query)}）</span>`;
+  }
+  return _markSearchHtml(name, query, true);
+}
+
+// 店名の下に出す「一致した日付・金額・商品」のHTML（m は buildReceiptSearcher の結果）
+function _searchMatchSummaryHtml(m, query, maxItems = 3) {
+  if (!m) return '';
+  const fields = m.fields || [];
+  const items = m.items || [];
+  if (!fields.length && !items.length) return '';
+  const lines = [
+    ...fields.map(f => `<span class="search-hit-line">• ${_markSearchHtml(f, query)}</span>`),
+    ...items.slice(0, maxItems).map(it => `<span class="search-hit-line">• ${_searchItemLabelHtml(it, query)}</span>`),
+  ];
+  if (items.length > maxItems) lines.push(`<span class="search-hit-line search-hit-sub">…他${items.length - maxItems}件</span>`);
+  return `<div class="search-hit-items">${lines.join('')}</div>`;
+}
+
 // 検索語が変わったら、表示中のビュー（カレンダー／リスト）を描き直す
 function _refreshHistorySearchView() {
-  if (_historyView === 'cal') renderCalendar();
-  else loadHistory();
+  if (_historyView === 'cal') {
+    renderCalendar();
+    // 開いている日別パネルも、一致レシートの強調・マーカーを付け直す
+    const panel = document.getElementById('cal-day-panel');
+    const date = panel && panel.style.display !== 'none' ? panel.dataset.date : null;
+    if (date) showCalDayPanel(date, _calRecords.filter(r => r.date === date), { noScroll: true });
+  } else {
+    loadHistory();
+  }
 }
 
 function setHistorySort(sort) {
@@ -6919,38 +7050,18 @@ async function loadHistory() {
       matchEl.style.display = 'none';
     }
 
-    function highlightText(text, query) {
-      if (!query) return text;
-      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return text.replace(new RegExp(`(${escaped})`, 'gi'),
-        '<span class="history-item-highlight">$1</span>');
-    }
-
     displayRecords.forEach(r => {
       const li = document.createElement('li');
       li.className = 'history-item';
       li.dataset.id = r.id;
       const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
       // 検索時は一致した項目（日付・金額など）と商品名を表示（店名の一致は上の太字にマーカー）
-      const matchedItemsHtml = searchQuery && r._matchedItems &&
-        ((r._matchedFields || []).length > 0 || r._matchedItems.length > 0)
-        ? `<div style="font-size:11px;color:var(--text-dim);margin-top:3px;line-height:1.6;">
-            ${(r._matchedFields || []).map(f =>
-              `<span style="margin-right:6px;">• ${highlightText(escHtml(f), escHtml(searchQuery))}</span>`
-            ).join('')}${r._matchedItems.slice(0, 3).map(item =>
-              `<span style="margin-right:6px;">• ${highlightText(escHtml(item.name || ''), escHtml(searchQuery))}</span>`
-            ).join('')}${r._matchedItems.length > 3 ? `<span>…他${r._matchedItems.length - 3}件</span>` : ''}
-           </div>`
+      const matchedItemsHtml = searcher
+        ? _searchMatchSummaryHtml({ fields: r._matchedFields, items: r._matchedItems }, searchQuery)
         : '';
       li.innerHTML = `
         <div class="history-left">
-          <div class="history-store">${(() => {
-            const nameHtml = escHtml(storeDisplayName(r));
-            if (!searchQuery || !r._storeHit) return nameHtml;
-            // 検索語がそのまま含まれていればその部分、別表記・かなカナ違いでの一致なら店名全体にマーカー
-            const marked = highlightText(nameHtml, escHtml(searchQuery));
-            return marked !== nameHtml ? marked : `<span class="history-item-highlight">${nameHtml}</span>`;
-          })()}</div>
+          <div class="history-store">${searcher ? _searchStoreHtml(r, searchQuery, r._storeHit) : escHtml(storeDisplayName(r))}</div>
           ${(() => {
             const brand = (r.store_brand || '').trim();
             const store = (r.store || '').trim();
@@ -7234,8 +7345,16 @@ function showCalDayPanel(dateStr, records, opts = {}) {
   const header = document.createElement('div');
   header.className = 'cal-day-panel-header';
 
+  // 検索中なら各レシートの一致情報を求める（一致したレシートは強調、しないものは暗く）
+  const searchQuery = (currentHistorySearch || '').trim();
+  const searcher = searchQuery ? buildReceiptSearcher(searchQuery) : null;
+  const matches = new Map();
+  if (searcher) records.forEach(r => { const m = searcher(r); if (m) matches.set(r, m); });
+
   const titleSpan = document.createElement('span');
-  titleSpan.textContent = `${label}（${records.length}件）`;
+  titleSpan.textContent = searcher && records.length > 0
+    ? `${label}（${records.length}件中 ${matches.size}件一致）`
+    : `${label}（${records.length}件）`;
 
   const btnRow = document.createElement('div');
   btnRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
@@ -7278,13 +7397,16 @@ function showCalDayPanel(dateStr, records, opts = {}) {
 
   records.forEach(r => {
     const li = document.createElement('li');
-    li.className = 'history-item';
+    const m = searcher ? matches.get(r) : null;
+    li.className = 'history-item' + (searcher ? (m ? ' search-hit-item' : ' search-dim') : '');
     li.style.cursor = 'pointer';
 
     const left = document.createElement('div');
     left.className = 'history-left';
+    // 検索中：店名の一致はマーカー、その下に一致した商品名（日付・金額の一致も）をマーカー付きで表示
     left.innerHTML = `
-      <div class="history-store">${escHtml(storeDisplayName(r))}</div>
+      <div class="history-store">${m ? _searchStoreHtml(r, searchQuery, m.storeHit) : escHtml(storeDisplayName(r))}</div>
+      ${m ? _searchMatchSummaryHtml(m, searchQuery) : ''}
       <div class="history-date">${r.time || ''}</div>`;
 
     const right = document.createElement('div');
@@ -7477,7 +7599,14 @@ function _renderDetail() {
   const totalEl  = document.getElementById(ctx === 'stats' ? 'stats-detail-total'  : 'detail-total');
   const container= document.getElementById(ctx === 'stats' ? 'stats-detail-items'  : 'detail-items');
 
-  storeEl.textContent = storeDisplayName(r);
+  // 履歴で検索中に開いたときは、一致した店名・日付・合計・商品にマーカー／ハイライトを付ける
+  const searchQuery = ctx === 'history' ? (currentHistorySearch || '').trim() : '';
+  const searcher = searchQuery ? buildReceiptSearcher(searchQuery) : null;
+  const sm = searcher ? searcher(r) : null;
+  const hitItems = new Set(sm ? sm.items : []);
+
+  if (sm && sm.storeHit) storeEl.innerHTML = _searchStoreHtml(r, searchQuery, true);
+  else storeEl.textContent = storeDisplayName(r);
   // store_brand の補足表示
   const brandElId = ctx === 'stats' ? 'stats-detail-store-brand' : 'detail-store-brand';
   const brandDetailEl = document.getElementById(brandElId);
@@ -7492,7 +7621,9 @@ function _renderDetail() {
     }
   }
   const dateTime = r.date ? (r.time ? `${r.date} ${r.time}` : r.date) : '—';
-  dateEl.textContent = dateTime;
+  const dateHit = !!(sm && sm.fields.some(f => f.startsWith('日付')));
+  if (dateHit) dateEl.innerHTML = _markSearchHtml(dateTime, searchQuery, true);
+  else dateEl.textContent = dateTime;
 
   const splitOn = !!r.split_enabled;
   const splitCount = r.split_count || 2;
@@ -7500,7 +7631,9 @@ function _renderDetail() {
   const itemsSum = (r.items || []).reduce((s, i) => s + (i.price || 0), 0);
   const total = (r.total && r.total > itemsSum) ? r.total : (itemsSum || r.total || 0);
   const displayTotal = splitOn ? Math.ceil(total / splitCount) : total;
-  totalEl.textContent = '¥' + displayTotal.toLocaleString();
+  const totalHit = !!(sm && sm.fields.some(f => f.startsWith('合計')));
+  if (totalHit) totalEl.innerHTML = _markSearchHtml('¥' + displayTotal.toLocaleString(), searchQuery, true);
+  else totalEl.textContent = '¥' + displayTotal.toLocaleString();
 
   // 割り勘UIを同期
   _syncSplitBar(ctx);
@@ -7508,18 +7641,27 @@ function _renderDetail() {
   container.innerHTML = '';
   (r.items || []).forEach((item, idx) => {
     const div = document.createElement('div');
-    div.className = 'detail-item-row';
+    const isHit = hitItems.has(item);
+    // 一致した商品の行はハイライト、一致する商品があるレシートでは他の行を暗く
+    div.className = 'detail-item-row' +
+      (isHit ? ' search-hit-row' : (hitItems.size > 0 ? ' search-dim-row' : ''));
     const price = item.price || 0;
     const splitHtml = splitOn
       ? `<div class="detail-item-split">÷${splitCount} = ¥${Math.ceil(price / splitCount).toLocaleString()}</div>`
       : '';
+    const q = isHit ? searchQuery : '';
+    const nameStr = item.name || '—';
+    const catStr = resolveCatLabel(item);
+    const priceStr = `¥${price.toLocaleString()}`;
+    // 商品名・カテゴリ・金額のどこにも文字列として一致しない（表記ゆれ等）なら商品名全体にマーカー
+    const anyLiteral = q && [nameStr, catStr, priceStr].some(t => _searchMarkRanges(t, q).length);
     div.innerHTML = `
       <div class="detail-item-left">
-        <div class="detail-item-name">${item.name || '—'}</div>
-        <span class="detail-item-cat">${escHtml(resolveCatLabel(item))}</span>
+        <div class="detail-item-name">${_markSearchHtml(nameStr, q, !!q && !anyLiteral)}</div>
+        <span class="detail-item-cat">${_markSearchHtml(catStr, q)}</span>
       </div>
       <div class="detail-item-price-block">
-        <div class="detail-item-price">${unitPriceHtml(item)}¥${price.toLocaleString()}</div>
+        <div class="detail-item-price">${unitPriceHtml(item)}${_markSearchHtml(priceStr, q)}</div>
         ${splitHtml}
       </div>
       <button class="item-edit-btn" onclick="openItemEditModal(${idx})">✏️</button>
