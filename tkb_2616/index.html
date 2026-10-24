@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f6fa">
+  <meta name="color-scheme" content="light">
+  <title>Shumitomo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- デモ用：立場の切り替え（本番では、ログインと募集の状態で決まる） -->
+  <div class="demo-bar">
+    <span class="demo-badge">デモ</span>
+    <div class="role-switch" role="group" aria-label="立場">
+      <button type="button" data-action="role" data-role="rec">募集する人</button>
+      <button type="button" data-action="role" data-role="par">参加する人</button>
+    </div>
+    <button type="button" class="demo-reset" data-action="reset">最初から</button>
+  </div>
+
+  <div class="app">
+    <main id="view" class="screen"></main>
+
+    <!-- 下のタブ（app-7）：すべての画面に出る -->
+    <nav class="tabbar" aria-label="メインメニュー">
+      <a class="tab" href="#/profile" data-tab="profile">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+        <span>プロフィール</span>
+      </a>
+      <a class="tab" href="#/recruit" data-tab="recruit">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4h4l6 4V6L7 10H3z"/><path d="M17 8a5 5 0 0 1 0 8"/></svg>
+        <span>募集</span>
+      </a>
+      <a class="tab" href="#/connections" data-tab="connections">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 14.2c3 .1 5.5 2 5.5 5.3"/></svg>
+        <span>つながり</span>
+      </a>
+    </nav>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
