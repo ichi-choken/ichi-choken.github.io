@@ -225,6 +225,26 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+  .api-key-get-box {
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    background: var(--surface2);
+  }
+  .api-key-get-head { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .api-key-get-sub  { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 10px; }
+  .api-key-get-link {
+    display: block;
+    text-align: center;
+    padding: 11px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+  }
   #onboard-toast .onboard-sub {
     display: block;
     margin-top: 4px;
@@ -2585,6 +2605,13 @@
     <button type="button" class="modal-close" onclick="closeSettings()" aria-label="閉じる">✕</button>
     <div class="modal-title">⚙ 設定</div>
 
+    <!-- APIキー未設定のときだけ表示する取得案内（openSettings / saveApiKey で切り替え） -->
+    <div id="api-key-get-box" class="api-key-get-box" style="display:none;">
+      <div class="api-key-get-head">🔑 Gemini APIキーが未設定です</div>
+      <div class="api-key-get-sub">レシートの読み取りに必要です。無料で取得できます。取得したキーを下の「Gemini API キー」欄に貼り付けて保存してください。</div>
+      <a class="api-key-get-link" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio でAPIキーを取得 ↗</a>
+    </div>
+
     <div class="modal-label">テーマ</div>
     <div style="display:flex;gap:8px;margin-bottom:4px;">
       <button id="theme-btn-auto" onclick="setTheme('auto')"
@@ -2600,7 +2627,9 @@
         ☀️ ライト
       </button>
     </div>
-    <div class="modal-label">Gemini API キー</div>
+    <div class="modal-label">Gemini API キー
+      <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style="float:right;font-size:12px;color:var(--accent);text-decoration:none;">取得ページ ↗</a>
+    </div>
     <input type="password" id="api-key-input" placeholder="AIza...">
     <button class="btn btn-primary" onclick="saveApiKey()">APIキーを保存</button>
 
@@ -5854,7 +5883,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-25 17:13';
+const APP_BUILD = '2026-10-25 17:36';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -5914,9 +5943,16 @@ async function renderVersionInfo() {
 }
 
 // ===== 設定（APIキー） =====
+// APIキー未設定のときだけ、設定画面の最上部に取得ページへのリンクを出す
+function updateApiKeyGetBox() {
+  const box = document.getElementById('api-key-get-box');
+  if (box) box.style.display = hasApiKey() ? 'none' : 'block';
+}
+
 function openSettings() {
   const key = localStorage.getItem('gemini_api_key') || '';
   document.getElementById('api-key-input').value = key;
+  updateApiKeyGetBox();
   const model = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
   document.getElementById('gemini-model-select').value = model;
   updateCategoryStatus();
@@ -6375,6 +6411,7 @@ function saveApiKey() {
   if (!key) { alert('APIキーを入力してください'); return; }
   localStorage.setItem('gemini_api_key', key);
   _saveSettingIDB('gemini_api_key', key);
+  updateApiKeyGetBox();
   hideOnboardToast();
   _skipNextCloseTopLayer = true;
   _closeSettingsInner();
@@ -11383,10 +11420,11 @@ async function initApp(isResume) {
 
   // 初期セットアップ（ユーザー追加 → APIキー保存）が未完了なら案内する。
   // 復帰時は毎回出さない。
-  // ダミーを作った直後は設定画面を開かず、まずお試しデータを見てもらう。
+  // ダミーを作った直後も、APIキーが未設定なら設定画面を開いて取得リンクを見せる。
   if (!isResume && seededDummy) {
     setTimeout(() => showStatus('success',
       'お試し用の「ダミー」ユーザーで愛知県のサンプルデータを表示しています。使い始めるときは画面上部の👤から自分のユーザーを追加してください'), 600);
+    if (!hasApiKey()) setTimeout(promptApiKey, 400);
   } else if (!isResume) setTimeout(promptSetup, 400);
 
   // ── URLトリガーによるエクスポート ──
