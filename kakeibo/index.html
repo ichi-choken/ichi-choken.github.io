@@ -51,7 +51,7 @@
 
 【設定】
   - Gemini API キーの登録
-  - 使用モデルの選択（gemini-2.5-flash / 2.0-flash / 1.5-flash / 1.5-flash-8b）
+  - 使用モデルの選択（gemini-3.8-flash / 3.6-flash / 3.5-flash-lite / 3.1-flash-lite / 2.5-flash）
   - 大中カテゴリ管理（largeDef）：大カテゴリの追加・編集・削除、中カテゴリの割り当て（複数可）
     - JSON エクスポート／インポート対応
   - 中小カテゴリ管理（categoryDef）：中／小カテゴリの追加・編集・削除
@@ -2660,10 +2660,7 @@
 
     <div class="modal-label" style="margin-top:16px;">使用モデル</div>
     <select id="gemini-model-select" onchange="saveGeminiModel()" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:10px 12px; color:var(--text); font-size:14px; font-family:'Space Mono',monospace; outline:none; appearance:none; cursor:pointer;">
-      <option value="gemini-2.5-flash">gemini-2.5-flash（最新・高精度）</option>
-      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-      <option value="gemini-1.5-flash">gemini-1.5-flash（混雑時の代替）</option>
-      <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b（軽量・高速）</option>
+      <!-- 選択肢は GEMINI_MODELS から生成する -->
     </select>
     <div id="model-saved-msg" style="font-size:12px; color:var(--accent); margin-top:6px; min-height:16px;"></div>
 
@@ -5908,7 +5905,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-27 16:06';
+const APP_BUILD = '2026-10-27 16:10';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -5978,8 +5975,8 @@ function openSettings() {
   const key = localStorage.getItem('gemini_api_key') || '';
   document.getElementById('api-key-input').value = key;
   updateApiKeyGetBox();
-  const model = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
-  document.getElementById('gemini-model-select').value = model;
+  renderGeminiModelOptions();
+  document.getElementById('gemini-model-select').value = getGeminiModel();
   updateCategoryStatus();
   updateStoreDefStatus();
   updateExportStatus();
@@ -6444,6 +6441,35 @@ function saveApiKey() {
   showStatus('success', 'APIキーを保存しました');
 }
 
+// ===== 使用モデル（2026-10 時点の Gemini API に合わせた選択肢） =====
+// 2.0-flash は 2026-06-01 に提供終了、1.5 系は一覧から消えたため除外。
+// 2.5 系は「以前から使っている人のみ」提供継続（終了日未定）なので、既存ユーザー向けに残す
+const GEMINI_DEFAULT_MODEL = 'gemini-3.8-flash';
+const GEMINI_MODELS = [
+  { id: 'gemini-3.8-flash',      label: '最新・高精度' },
+  { id: 'gemini-3.6-flash',      label: '前世代・バランス型' },
+  { id: 'gemini-3.5-flash-lite', label: '軽量・高速' },
+  { id: 'gemini-3.1-flash-lite', label: '最安・混雑時の代替' },
+  { id: 'gemini-2.5-flash',      label: '旧モデル・利用歴がある人のみ' },
+];
+// 保存値が選択肢にない（提供終了したモデル等）なら既定モデルに置き換えて保存し直す
+function getGeminiModel() {
+  const saved = localStorage.getItem('gemini_model');
+  if (GEMINI_MODELS.some(m => m.id === saved)) return saved;
+  if (saved) localStorage.setItem('gemini_model', GEMINI_DEFAULT_MODEL);
+  return GEMINI_DEFAULT_MODEL;
+}
+function renderGeminiModelOptions() {
+  const sel = document.getElementById('gemini-model-select');
+  if (!sel || sel.options.length) return;
+  GEMINI_MODELS.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m.id;
+    o.textContent = `${m.id}（${m.label}）`;
+    sel.appendChild(o);
+  });
+}
+
 function saveGeminiModel() {
   const model = document.getElementById('gemini-model-select').value;
   localStorage.setItem('gemini_model', model);
@@ -6715,7 +6741,7 @@ ${knownStoreBrandsPromptText()}
 - ほかにも収入にあたる行（キャッシュバックなど）は、収入カテゴリ（${[...incomeCategoryNames()].map(c => `"${c}"`).join('、')}）から選んで middle_category に入れ、"entry_type": "income" を付けて price はマイナスにする。収入カテゴリは通常の商品には使わない
 - items の price をすべて足した値が total（実際の支払い金額）と一致するようにする`;
 
-    const _geminiUrl1 = `https://generativelanguage.googleapis.com/v1beta/models/${localStorage.getItem('gemini_model') || 'gemini-2.5-flash'}:generateContent?key=${apiKey}`;
+    const _geminiUrl1 = `https://generativelanguage.googleapis.com/v1beta/models/${getGeminiModel()}:generateContent?key=${apiKey}`;
     const _geminiBody1 = JSON.stringify({
       contents: [{
         parts: [
@@ -11841,7 +11867,7 @@ ${knownStoreBrandsPromptText()}
 JSONのみ返してください（説明文・マークダウン・コードブロック不要）。形式：
 {"store_brand":"チェーン名（例：アピタ、イオン、セブン-イレブン。店名が無い・判別できなければ null）","items":[{"index":0,"middle_category":"...","small_category":"..."},...]}`;
 
-    const _geminiUrl2 = `https://generativelanguage.googleapis.com/v1beta/models/${localStorage.getItem('gemini_model') || 'gemini-2.5-flash'}:generateContent?key=${apiKey}`;
+    const _geminiUrl2 = `https://generativelanguage.googleapis.com/v1beta/models/${getGeminiModel()}:generateContent?key=${apiKey}`;
     const _geminiBody2 = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
 
     // リトライ中はボタンに残り時間を表示する

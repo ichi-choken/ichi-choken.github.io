@@ -71,7 +71,7 @@
 |---|---|
 | 形式 | 単一 HTML ファイル（ビルド不要） |
 | 外部ライブラリ | Chart.js 4.4.1（CDN） |
-| 外部 API | Gemini API（既定は `gemini-2.5-flash`，設定画面でモデル切り替え可） |
+| 外部 API | Gemini API（既定は `gemini-3.8-flash`，設定画面でモデル切り替え可） |
 | データ保存 | IndexedDB（明細）／ localStorage（設定・カテゴリ定義） |
 | バックアップ形式 | JSON（version 3，個数を含む．version 1・2 も読み込み可） |
 | 認証 | WebAuthn（削除操作のロック） |
