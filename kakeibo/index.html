@@ -2083,7 +2083,7 @@
       <!-- 支出 -->
       <div id="manual-large-row" style="margin-bottom:12px;">
         <div style="margin-bottom:4px;">
-          <div class="modal-label">支出<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリー未選択なら自動カテゴリー分けをします）</span></div>
+          <div class="modal-label">支出<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリー未選択なら自動でカテゴリー分けをします）</span></div>
         </div>
 
         <!-- カテゴリ ドロップダウン -->
@@ -5889,7 +5889,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-27 16:17';
+const APP_BUILD = '2026-10-27 16:20';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -13374,7 +13374,7 @@ function setManualEntryType(type) {
   // ラベル切り替え
   const label = document.querySelector('#manual-large-row .modal-label');
   // 支出は中カテゴリ未選択なら保存後に自動カテゴライズされることを添える
-  if (label) label.innerHTML = isExpense ? '支出<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリー未選択なら自動カテゴリー分けをします）</span>' : '収入';
+  if (label) label.innerHTML = isExpense ? '支出<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリー未選択なら自動でカテゴリー分けをします）</span>' : '収入';
 
   const INCOME_NAMES = loadIncomeCategories();
   const catList  = document.getElementById('manual-cat-list');
