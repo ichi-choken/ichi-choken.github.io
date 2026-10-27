@@ -1161,6 +1161,14 @@
   }
   .split-count-unit { font-size: 12px; color: var(--text-dim); }
 
+  /* 長押しで連続実行するボタン：長押しメニュー・文字選択・ダブルタップ拡大を抑止 */
+  [data-hold-repeat] {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
   /* ===== 集計タブ ===== */
   .period-selector {
     display: flex;
@@ -2057,9 +2065,9 @@
       <div style="margin-bottom:12px;">
         <div class="modal-label" style="margin-bottom:4px;">日付</div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <button onclick="manualDateShift(-1)" style="flex-shrink:0;width:36px;height:40px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;">‹</button>
+          <button type="button" data-hold-repeat onclick="manualDateShift(-1)" style="flex-shrink:0;width:36px;height:40px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;">‹</button>
           <input type="date" id="manual-date" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 8px;color:var(--text);font-size:14px;outline:none;text-align:center;">
-          <button onclick="manualDateShift(+1)" style="flex-shrink:0;width:36px;height:40px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;">›</button>
+          <button type="button" data-hold-repeat onclick="manualDateShift(+1)" style="flex-shrink:0;width:36px;height:40px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;">›</button>
         </div>
       </div>
 
@@ -2209,10 +2217,10 @@
         <span class="split-bar-label">割り勘</span>
         <div class="split-toggle" id="split-toggle-manual" onclick="toggleManualSplit()"></div>
         <div class="split-count-wrap hidden" id="split-count-wrap-manual">
-          <button type="button" class="split-count-btn" onclick="changeManualSplitCount(-1)">−</button>
+          <button type="button" class="split-count-btn" data-hold-repeat onclick="changeManualSplitCount(-1)">−</button>
           <span class="split-count-val" id="split-count-val-manual">2</span>
           <span class="split-count-unit">人</span>
-          <button type="button" class="split-count-btn" onclick="changeManualSplitCount(+1)">＋</button>
+          <button type="button" class="split-count-btn" data-hold-repeat onclick="changeManualSplitCount(+1)">＋</button>
         </div>
         <span class="manual-split-share" id="manual-split-share"></span>
       </div>
@@ -2312,10 +2320,10 @@
       <span class="split-bar-label">割り勘</span>
       <div class="split-toggle" id="split-toggle-history" onclick="toggleSplit('history')"></div>
       <div class="split-count-wrap hidden" id="split-count-wrap-history">
-        <button class="split-count-btn" onclick="changeSplitCount('history', -1)">−</button>
+        <button type="button" class="split-count-btn" data-hold-repeat onclick="changeSplitCount('history', -1)">−</button>
         <span class="split-count-val" id="split-count-val-history">2</span>
         <span class="split-count-unit">人</span>
-        <button class="split-count-btn" onclick="changeSplitCount('history', +1)">＋</button>
+        <button type="button" class="split-count-btn" data-hold-repeat onclick="changeSplitCount('history', +1)">＋</button>
       </div>
     </div>
     <div class="detail-items" id="detail-items"></div>
@@ -2517,10 +2525,10 @@
       <span class="split-bar-label">割り勘</span>
       <div class="split-toggle" id="split-toggle-stats" onclick="toggleSplit('stats')"></div>
       <div class="split-count-wrap hidden" id="split-count-wrap-stats">
-        <button class="split-count-btn" onclick="changeSplitCount('stats', -1)">−</button>
+        <button type="button" class="split-count-btn" data-hold-repeat onclick="changeSplitCount('stats', -1)">−</button>
         <span class="split-count-val" id="split-count-val-stats">2</span>
         <span class="split-count-unit">人</span>
-        <button class="split-count-btn" onclick="changeSplitCount('stats', +1)">＋</button>
+        <button type="button" class="split-count-btn" data-hold-repeat onclick="changeSplitCount('stats', +1)">＋</button>
       </div>
     </div>
     <div class="detail-items" id="stats-detail-items"></div>
@@ -5900,7 +5908,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-27 15:51';
+const APP_BUILD = '2026-10-27 16:06';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -13444,6 +13452,62 @@ function manualDateShift(delta) {
   const pad = n => String(n).padStart(2, '0');
   input.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
+
+// ===== 長押しで連続実行（data-hold-repeat を付けたボタン：割り勘人数の −／＋、日付の ‹／›） =====
+// 短いタップは onclick で1回。押し続けると HOLD_DELAY 後から連続実行し、続けるほど間隔を縮める。
+// 連続実行した後に届く click は捨てる（離した瞬間にもう1回動くのを防ぐ）
+const HOLD_DELAY = 400;          // 連続実行を始めるまで（ms）
+const HOLD_INTERVAL_START = 150; // 最初の連続間隔（ms）
+const HOLD_INTERVAL_MIN = 50;    // 最速の連続間隔（ms）
+let _hold = null; // { btn, timer, fired }
+
+function _holdStop() {
+  if (!_hold) return;
+  clearTimeout(_hold.timer);
+  if (_hold.fired) {
+    const btn = _hold.btn;
+    btn._holdSuppressClick = true;
+    // click が来なかった場合（指が外れた等）に、次の普通のタップまで捨てないよう解除
+    setTimeout(() => { btn._holdSuppressClick = false; }, 600);
+  }
+  _hold = null;
+}
+
+document.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const btn = e.target.closest('[data-hold-repeat]');
+  if (!btn || btn.disabled || typeof btn.onclick !== 'function') return;
+  _holdStop();
+  const h = { btn, timer: null, fired: false };
+  _hold = h;
+  let interval = HOLD_INTERVAL_START;
+  const step = () => {
+    if (_hold !== h) return;
+    h.fired = true;
+    btn.onclick.call(btn);
+    interval = Math.max(HOLD_INTERVAL_MIN, interval * 0.85);
+    h.timer = setTimeout(step, interval);
+  };
+  h.timer = setTimeout(step, HOLD_DELAY);
+});
+['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, _holdStop));
+document.addEventListener('pointerleave', _holdStop);
+document.addEventListener('pointerout', e => {
+  if (_hold && e.target === _hold.btn && !_hold.btn.contains(e.relatedTarget)) _holdStop();
+});
+window.addEventListener('blur', _holdStop);
+// 長押しで連続実行した後の click を捨てる（capture で onclick より先に止める）
+document.addEventListener('click', e => {
+  const btn = e.target.closest && e.target.closest('[data-hold-repeat]');
+  if (btn && btn._holdSuppressClick) {
+    btn._holdSuppressClick = false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+}, true);
+document.addEventListener('contextmenu', e => {
+  if (e.target.closest && e.target.closest('[data-hold-repeat]')) e.preventDefault();
+});
 
 // ===== 店舗名の選択UI（追加タブの手入力・レシート情報の編集で共用） =====
 // key: 'manual'（追加タブ）| 'edit'（レシート情報を編集）
