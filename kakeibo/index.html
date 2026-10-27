@@ -1515,6 +1515,23 @@
   }
   .modal select:focus { border-color: var(--accent); }
 
+  /* 商品編集モーダルの金額・個数（number）入力：text入力と同じ見た目にし、列幅に収める */
+  #item-edit-modal input[type="number"] {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'Space Mono', monospace;
+    outline: none;
+    margin-bottom: 4px;
+  }
+  #item-edit-modal input[type="number"]:focus { border-color: var(--accent); }
+
   /* 大カテゴリselectはアクセントボーダーで区別 */
   #edit-item-large-cat { border-color: var(--accent) !important; }
 
@@ -5883,7 +5900,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-25 17:36';
+const APP_BUILD = '2026-10-27 15:51';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
