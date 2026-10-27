@@ -2092,29 +2092,13 @@
             style="display:flex;justify-content:space-between;align-items:center;
                    background:var(--surface2);border:1px solid var(--border);border-radius:6px;
                    padding:10px 12px;cursor:pointer;font-size:14px;color:var(--text);">
-            <span id="manual-cat-label">食費</span>
+            <span id="manual-cat-label" style="color:var(--text-dim);">未選択</span>
             <span id="manual-cat-arrow" style="font-size:12px;color:var(--text-dim);">▼</span>
           </div>
           <div id="manual-cat-list" style="display:none;position:absolute;top:100%;left:0;right:0;
                background:var(--surface2);border:1px solid var(--border);border-radius:6px;
                margin-top:4px;z-index:100;overflow-y:auto;max-height:45vh;">
-            <div class="manual-cat-opt active" onclick="chooseManualCat(0,'食費')">食費</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(1,'日用品')">日用品</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(2,'衣服')">衣服</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(3,'美容')">美容</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(4,'医療・健康')">医療・健康</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(5,'交通費')">交通費</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(6,'住居費')">住居費</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(7,'水道・光熱費')">水道・光熱費</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(8,'通信費')">通信費</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(9,'教育・教養')">教育・教養</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(10,'趣味・娯楽')">趣味・娯楽</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(11,'交際費')">交際費</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(12,'サービス')">サービス</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(13,'保険・税金')">保険・税金</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(14,'ネットショッピング')">ネットショッピング</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(15,'チャージ・入金')">チャージ・入金</div>
-            <div class="manual-cat-opt" onclick="chooseManualCat(16,'未分類')">未分類</div>
+            <!-- 選択肢は rebuildManualCatDropdown で生成（先頭は「未選択」） -->
           </div>
         </div>
 
@@ -2127,7 +2111,7 @@
               style="display:flex;justify-content:space-between;align-items:center;
                      background:var(--surface2);border:1px solid var(--border);border-radius:6px;
                      padding:7px 10px;cursor:pointer;font-size:13px;color:var(--text);">
-              <span id="manual-mid-label" style="color:var(--text-dim);font-size:12px;"></span>
+              <span id="manual-mid-label" style="color:var(--text-dim);font-size:12px;">未選択</span>
               <span id="manual-mid-arrow" style="font-size:11px;color:var(--text-dim);">▼</span>
             </div>
             <div id="manual-mid-list" style="display:none;position:absolute;top:100%;left:0;right:0;
@@ -5905,7 +5889,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-27 16:10';
+const APP_BUILD = '2026-10-27 16:12';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -12523,8 +12507,9 @@ const LARGE_CAT_SVG = {
   </svg>`,
 };
 
-// 現在選択中の大カテゴリindex
-let _manualLargeIdx = 0;
+// 現在選択中の大カテゴリindex（-1 = 未選択。未選択なら中・小カテゴリは隠し、保存後に自動で振り分ける）
+const MANUAL_CAT_UNSELECTED = '未選択';
+let _manualLargeIdx = -1;
 let _manualSmall = ''; // 手入力で選択中の小カテゴリ（未選択は空文字列）
 
 function toggleManualCatDropdown() {
@@ -12555,12 +12540,15 @@ function toggleManualCatDropdown() {
 }
 
 function chooseManualCat(idx, name) {
+  if (idx == null || idx < 0) { idx = -1; name = MANUAL_CAT_UNSELECTED; }
   _manualLargeIdx = idx;
-  document.getElementById('manual-cat-label').textContent = name;
+  const label = document.getElementById('manual-cat-label');
+  label.textContent = name;
+  label.style.color = idx < 0 ? 'var(--text-dim)' : 'var(--text)';
   document.getElementById('manual-cat-list').style.display = 'none';
   document.getElementById('manual-cat-arrow').textContent = '▼';
-  document.querySelectorAll('.manual-cat-opt').forEach((el, i) => {
-    el.classList.toggle('active', i === idx);
+  document.querySelectorAll('#manual-cat-list .manual-cat-opt').forEach(el => {
+    el.classList.toggle('active', Number(el.dataset.idx) === idx);
   });
   onManualLargeChange(idx);
   rebuildManualMidDropdown(idx);
@@ -12593,17 +12581,19 @@ function toggleManualMidDropdown() {
 }
 
 function chooseMidCat(midName) {
+  midName = midName || '';
   const lbl = document.getElementById('manual-mid-label');
-  lbl.textContent = midName;
-  lbl.style.color = 'var(--text)';
+  lbl.textContent = midName || MANUAL_CAT_UNSELECTED;
+  lbl.style.color = midName ? 'var(--text)' : 'var(--text-dim)';
   document.getElementById('manual-mid-list').style.display = 'none';
   document.getElementById('manual-mid-arrow').textContent = '▼';
   document.querySelectorAll('.manual-mid-opt').forEach(el => {
-    el.classList.toggle('active', el.textContent === midName);
+    el.classList.toggle('active', (el.dataset.mid || '') === midName);
   });
-  // 既存の hidden select に反映（addManualItem が参照）
+  // 既存の hidden select に反映（addManualItem が参照）。未選択なら空＝保存後に自動で振り分け
   const midSel = document.getElementById('manual-item-middle');
-  if (midSel) {
+  if (midSel && !midName) midSel.value = '';
+  if (midSel && midName) {
     for (let opt of midSel.options) {
       if (opt.value === midName) { midSel.value = midName; break; }
     }
@@ -12709,7 +12699,17 @@ function rebuildManualMidDropdown(lIdx) {
   const wrap = document.getElementById('manual-mid-dropdown');
   const list = document.getElementById('manual-mid-list');
   const label = document.getElementById('manual-mid-label');
-  if (!wrap || !list || !ld) return;
+  if (!wrap || !list) return;
+  if (!ld) {
+    // 大カテゴリが未選択：中・小カテゴリのエリアを隠し、中カテゴリも未選択にする
+    wrap.style.display = 'none';
+    list.innerHTML = '';
+    if (label) { label.textContent = MANUAL_CAT_UNSELECTED; label.style.color = 'var(--text-dim)'; }
+    const midSel0 = document.getElementById('manual-item-middle');
+    if (midSel0) midSel0.value = '';
+    rebuildManualSmallDropdown('');
+    return;
+  }
 
   // 中カテゴリ一覧を取得
   const midEntries = (ld.middles || []).map(entry => {
@@ -12726,16 +12726,24 @@ function rebuildManualMidDropdown(lIdx) {
 
   wrap.style.display = 'block';
   list.innerHTML = '';
-  midEntries.forEach((m, i) => {
+  // 先頭に「未選択」（選び直しで自動振り分けに戻せるように）
+  const none = document.createElement('div');
+  none.className = 'manual-cat-opt manual-mid-opt active';
+  none.dataset.mid = '';
+  none.textContent = MANUAL_CAT_UNSELECTED;
+  none.onclick = () => chooseMidCat('');
+  list.appendChild(none);
+  midEntries.forEach(m => {
     const div = document.createElement('div');
-    div.className = 'manual-cat-opt manual-mid-opt' + (i === 0 ? ' active' : '');
+    div.className = 'manual-cat-opt manual-mid-opt';
+    div.dataset.mid = m.middle;
     div.textContent = m.middle;
     div.onclick = () => chooseMidCat(m.middle);
     list.appendChild(div);
   });
 
   // 初期は未選択
-  label.textContent = '選択（オプション）';
+  label.textContent = MANUAL_CAT_UNSELECTED;
   label.style.color = 'var(--text-dim)';
   list.style.display = 'none';
   document.getElementById('manual-mid-arrow').textContent = '▼';
@@ -12763,20 +12771,29 @@ function rebuildManualCatDropdown() {
   // 現在の選択名を保持して再選択
   const currentName = label ? label.textContent : '';
   list.innerHTML = '';
-  let newIdx = 0;
+  let newIdx = -1;
+  const none = document.createElement('div');
+  none.className = 'manual-cat-opt';
+  none.dataset.idx = '-1';
+  none.textContent = MANUAL_CAT_UNSELECTED;
+  none.onclick = () => chooseManualCat(-1);
+  list.appendChild(none);
   def.forEach((ld, i) => {
     const div = document.createElement('div');
     div.className = 'manual-cat-opt';
+    div.dataset.idx = String(i);
     div.textContent = ld.large;
     div.onclick = () => chooseManualCat(i, ld.large);
     list.appendChild(div);
-    if (ld.large === currentName) newIdx = i;
+    if (ld.large === currentName && _manualLargeIdx >= 0) newIdx = i;
   });
 
   // active クラスと表示ラベルを更新
-  const opts = list.querySelectorAll('.manual-cat-opt');
-  opts.forEach((el, i) => el.classList.toggle('active', i === newIdx));
-  if (label) label.textContent = def[newIdx]?.large || '';
+  list.querySelectorAll('.manual-cat-opt').forEach(el => el.classList.toggle('active', Number(el.dataset.idx) === newIdx));
+  if (label) {
+    label.textContent = newIdx >= 0 ? def[newIdx].large : MANUAL_CAT_UNSELECTED;
+    label.style.color = newIdx >= 0 ? 'var(--text)' : 'var(--text-dim)';
+  }
   _manualLargeIdx = newIdx;
   // 中カテゴリドロップダウンも初期化
   rebuildManualMidDropdown(newIdx);
@@ -13374,7 +13391,7 @@ function setManualEntryType(type) {
         catList.appendChild(div);
       });
     }
-    if (catLabel) catLabel.textContent = INCOME_NAMES[0];
+    if (catLabel) { catLabel.textContent = INCOME_NAMES[0]; catLabel.style.color = 'var(--text)'; }
     if (midWrap)  midWrap.style.display = 'none';
     rebuildManualSmallDropdown(''); // 収入モードでは小カテゴリも非表示
     // hidden select を収入カテゴリで作り直す
@@ -13391,11 +13408,10 @@ function setManualEntryType(type) {
       midSel.value = INCOME_NAMES[0];
     }
   } else {
-    // ── 支出モード：通常の大カテゴリドロップダウンに戻す ──
+    // ── 支出モード：通常の大カテゴリドロップダウンに戻し、大・中カテゴリとも未選択から始める ──
+    _manualLargeIdx = -1;
     rebuildManualCatDropdown();
-    const def = (largeDef && largeDef.length > 0) ? largeDef : DEFAULT_LARGE_DEF;
-    const expIdx = def.findIndex(l => l.large === '食費');
-    chooseManualCat(expIdx >= 0 ? expIdx : 0, def[expIdx >= 0 ? expIdx : 0]?.large || '食費');
+    chooseManualCat(-1);
   }
 }
 
