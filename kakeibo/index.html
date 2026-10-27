@@ -2139,7 +2139,7 @@
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <!-- 左に個数、右に金額 -->
-          <input type="number" id="manual-item-qty" value="1" min="1" step="1" inputmode="numeric" aria-label="個数" style="width:56px;flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 6px;color:var(--text);font-size:14px;outline:none;text-align:center;">
+          <input type="number" id="manual-item-qty" value="1" min="1" step="1" inputmode="numeric" aria-label="個数" oninput="syncManualPricePlaceholder()" onchange="syncManualPricePlaceholder()" style="width:56px;flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 6px;color:var(--text);font-size:14px;outline:none;text-align:center;">
           <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">個</span>
           <input type="number" id="manual-item-price" placeholder="金額" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;">
           <span style="font-size:14px;color:var(--text-dim);white-space:nowrap;">円</span>
@@ -5889,7 +5889,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-27 16:13';
+const APP_BUILD = '2026-10-27 16:17';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -12974,6 +12974,15 @@ function _updateManualCatImportHint() {
   hint.style.display = hasProperCats ? 'none' : 'block';
 }
 
+// 金額欄のプレースホルダー：個数2以上なら「3個分の金額」（単価を入れてしまうのを防ぐ）、1なら「金額」
+function syncManualPricePlaceholder() {
+  const qtyEl = document.getElementById('manual-item-qty');
+  const priceEl = document.getElementById('manual-item-price');
+  if (!qtyEl || !priceEl) return;
+  const qty = parseInt(qtyEl.value, 10);
+  priceEl.placeholder = qty >= 2 ? `${qty}個分の金額` : '金額';
+}
+
 function addManualItem() {
   const nameEl = document.getElementById('manual-item-name');
   const priceEl = document.getElementById('manual-item-price');
@@ -13017,6 +13026,7 @@ function addManualItem() {
   nameEl.value = '';
   priceEl.value = '';
   if (qtyEl) qtyEl.value = 1;
+  syncManualPricePlaceholder();
   // 設定「追加毎にカテゴリ選択状態を初期化」：支出／収入はそのままで、カテゴリだけ初期状態に戻す
   if (getPref('manualResetCat')) setManualEntryType(_manualEntryType);
   renderManualItems();
@@ -13450,6 +13460,7 @@ function clearManualEntry(opts = {}) {
   document.getElementById('manual-item-name').value = '';
   document.getElementById('manual-item-price').value = '';
   document.getElementById('manual-item-qty').value = 1;
+  syncManualPricePlaceholder();
   renderManualItems();
   if (!keep) {
     // 支出/収入トグルをリセット
