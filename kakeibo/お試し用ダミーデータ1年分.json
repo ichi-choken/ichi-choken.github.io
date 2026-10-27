@@ -1026,7 +1026,60 @@
         "電子レンジ",
         "炊飯器",
         "テレビ",
+        "小型家電（扇風機・ケトル等）",
         "その他家電"
+      ]
+    },
+    {
+      "id": "mid_1788209771787_pctab",
+      "middle": "PC・タブレット",
+      "small": [
+        "ノートPC",
+        "デスクトップPC",
+        "タブレット",
+        "モニター",
+        "キーボード・マウス",
+        "PC周辺機器",
+        "その他PC・タブレット"
+      ]
+    },
+    {
+      "id": "mid_1788209771787_chrgp",
+      "middle": "充電・電源",
+      "small": [
+        "充電器",
+        "モバイルバッテリー",
+        "ケーブル",
+        "変換アダプタ・ハブ",
+        "その他充電・電源"
+      ]
+    },
+    {
+      "id": "mid_1788209771787_strge",
+      "middle": "記録メディア・ストレージ",
+      "small": [
+        "microSD・SDカード",
+        "USBメモリ",
+        "SSD・HDD",
+        "カードリーダー",
+        "その他記録メディア"
+      ]
+    },
+    {
+      "id": "mid_1788209771787_audio",
+      "middle": "オーディオ・カメラ",
+      "small": [
+        "イヤホン・ヘッドホン",
+        "スピーカー",
+        "カメラ",
+        "その他オーディオ・カメラ"
+      ]
+    },
+    {
+      "id": "mid_1788209771787_gdgot",
+      "middle": "その他家電・ガジェット",
+      "small": [
+        "その他家電・ガジェット"
       ]
     },
     {
@@ -1117,9 +1170,10 @@
       "middle": "通信機器",
       "small": [
         "スマホ本体",
+        "スマートウォッチ",
         "ルーター",
         "SIMカード",
-        "ケーブル・充電器",
+        "スマホケース・保護フィルム",
         "その他通信機器"
       ]
     },
@@ -1718,7 +1772,6 @@
         "mid_1788209771786_ceoih",
         "mid_1788209771786_br5jf",
         "mid_1788209771786_kfvn6",
-        "mid_1788209771786_ol2be",
         "mid_1788209771786_4eo5y",
         "mid_1788209771786_t491k",
         "mid_1788209771786_brbz3"
@@ -1738,8 +1791,19 @@
       "middles": [
         "mid_1788209771786_iaoux",
         "mid_1788209771786_nbk3n",
-        "mid_1788209771786_u0ebm",
         "mid_1788209771786_5c2ht"
+      ]
+    },
+    {
+      "large": "家電・ガジェット",
+      "middles": [
+        "mid_1788209771787_pctab",
+        "mid_1788209771786_u0ebm",
+        "mid_1788209771787_chrgp",
+        "mid_1788209771787_strge",
+        "mid_1788209771787_audio",
+        "mid_1788209771786_ol2be",
+        "mid_1788209771787_gdgot"
       ]
     },
     {
@@ -7700,9 +7764,9 @@
       "items": [
         {
           "name": "USBケーブル",
-          "middle_category": "創作・制作",
-          "middle_category_id": "mid_1788209771786_mvelp",
-          "small_category": "",
+          "middle_category": "充電・電源",
+          "middle_category_id": "mid_1788209771787_chrgp",
+          "small_category": "ケーブル",
           "price": 6250,
           "manually_categorized": true,
           "entry_type": "expense",
@@ -8136,9 +8200,9 @@
       "items": [
         {
           "name": "ノートPC",
-          "middle_category": "通信機器",
-          "middle_category_id": "mid_1788209771786_u0ebm",
-          "small_category": "その他通信機器",
+          "middle_category": "PC・タブレット",
+          "middle_category_id": "mid_1788209771787_pctab",
+          "small_category": "ノートPC",
           "price": 128000,
           "manually_categorized": true,
           "entry_type": "expense",
@@ -11131,9 +11195,9 @@
       "items": [
         {
           "name": "イヤホン",
-          "middle_category": "創作・制作",
-          "middle_category_id": "mid_1788209771786_mvelp",
-          "small_category": "",
+          "middle_category": "オーディオ・カメラ",
+          "middle_category_id": "mid_1788209771787_audio",
+          "small_category": "イヤホン・ヘッドホン",
           "price": 2663,
           "manually_categorized": true,
           "entry_type": "expense",
@@ -14490,9 +14554,9 @@
       "items": [
         {
           "name": "マウス",
-          "middle_category": "創作・制作",
-          "middle_category_id": "mid_1788209771786_mvelp",
-          "small_category": "",
+          "middle_category": "PC・タブレット",
+          "middle_category_id": "mid_1788209771787_pctab",
+          "small_category": "キーボード・マウス",
           "price": 5631,
           "manually_categorized": true,
           "entry_type": "expense",
