@@ -1484,7 +1484,20 @@
     transition: opacity 0.15s, transform 0.15s;
   }
   .recat-btn:hover { opacity: 1; }
-  .recat-btn.spinning { animation: spin 0.7s linear infinite; opacity: 1; pointer-events: none; }
+  .recat-btn { color: var(--text); }
+  .recat-btn svg { width: 1em; height: 1em; display: block; }
+  .recat-btn .recat-spark { display: none; fill: var(--accent); }
+  .recat-btn.spinning { opacity: 1; pointer-events: none; }
+  .recat-btn.spinning .recat-ico { display: none; }
+  .recat-btn.spinning .recat-spark { display: block; }
+  .recat-btn.spinning .recat-spark path { animation: recat-twinkle 1.2s ease-in-out infinite; }
+  .recat-btn.spinning .recat-spark .s1 { transform-origin: 10px 12px; }
+  .recat-btn.spinning .recat-spark .s2 { transform-origin: 18px 6px;  animation-delay: .4s; }
+  .recat-btn.spinning .recat-spark .s3 { transform-origin: 18px 18px; animation-delay: .8s; }
+  @keyframes recat-twinkle {
+    0%, 100% { transform: scale(.55) rotate(0deg); opacity: .45; }
+    50%      { transform: scale(1) rotate(45deg); opacity: 1; }
+  }
   .recat-btn.error { opacity: 1; filter: drop-shadow(0 0 3px var(--danger)); }
 
   /* 設定モーダル */
@@ -2481,7 +2494,7 @@
 
   <!-- 小カテゴリ選択時のレシート一覧 -->
   <div id="stats-receipt-list-section" style="display:none;">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 16px;margin-bottom:8px;"><div class="section-title" id="stats-receipt-list-title" style="margin-bottom:0;"></div><div style="display:flex;align-items:center;gap:6px;margin-left:8px;"><button id="stats-list-recat-btn" class="recat-btn" title="表示中のレシートを一括再カテゴライズ" style="display:none;font-size:17px;" onclick="bulkRecatStatsList()">🔄</button><div id="stats-receipt-list-total" style="font-family:'Space Mono',monospace;font-size:14px;color:var(--accent);white-space:nowrap;"></div></div></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 16px;margin-bottom:8px;"><div class="section-title" id="stats-receipt-list-title" style="margin-bottom:0;"></div><div style="display:flex;align-items:center;gap:6px;margin-left:8px;"><button id="stats-list-recat-btn" class="recat-btn" title="表示中のレシートを一括再カテゴライズ" style="display:none;font-size:17px;" onclick="bulkRecatStatsList()"></button><div id="stats-receipt-list-total" style="font-family:'Space Mono',monospace;font-size:14px;color:var(--accent);white-space:nowrap;"></div></div></div>
     <div style="padding: 0 16px 16px;">
       <ul class="history-list" id="stats-receipt-list"></ul>
     </div>
@@ -5889,7 +5902,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-28 10:33';
+const APP_BUILD = '2026-10-28 11:35';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -7517,7 +7530,7 @@ async function loadHistory() {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" title="再カテゴライズ">${recatIconHtml()}</button>
             <div class="history-total">¥${effectiveTotal(r).toLocaleString()}</div>
           </div>
           <div class="history-count">${(r.items || []).length}点</div>
@@ -7846,7 +7859,7 @@ function showCalDayPanel(dateStr, records, opts = {}) {
     const recatBtn = document.createElement('button');
     recatBtn.className = 'recat-btn';
     recatBtn.title = '再カテゴライズ';
-    recatBtn.textContent = recatDoneIds.has(r.id) ? '✅' : '🔄';
+    recatBtn.innerHTML = recatDoneIds.has(r.id) ? '✅' : recatIconHtml();
     recatBtn.addEventListener('click', e => {
       e.stopPropagation();
       recategorizeReceipt(r.id, recatBtn);
@@ -10200,7 +10213,7 @@ async function renderStoreReceipts(storeName, records) {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">${recatIconHtml()}</button>
             <div class="history-total">¥${effectiveTotal(r).toLocaleString()}</div>
           </div>
           <div class="history-count">${(r.items || []).length}点</div>
@@ -10442,7 +10455,7 @@ async function renderLargeDrillReceipts(large, midIdToLarge, records) {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">${recatIconHtml()}</button>
             <div class="history-total">¥${Math.ceil(matchTotal).toLocaleString()}</div>
           </div>
           <div class="history-count">${matchItems.length}点</div>
@@ -10503,7 +10516,7 @@ async function renderMiddleDrillReceipts(middle, records) {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">${recatIconHtml()}</button>
             <div class="history-total">¥${Math.ceil(matchTotal).toLocaleString()}</div>
           </div>
           <div class="history-count">${matchItems.length}点</div>
@@ -10564,7 +10577,7 @@ async function renderSmallDrillReceipts(middle, small) {
         </div>
         <div class="history-right">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">🔄</button>
+            <button class="recat-btn" data-rid="${r.id}" title="再カテゴライズ">${recatIconHtml()}</button>
             <div class="history-total">¥${Math.ceil(matchTotal).toLocaleString()}</div>
           </div>
           <div class="history-count">${matchItems.length}点</div>
@@ -11696,6 +11709,19 @@ function createSmallTag(sm, mIdx, sIdx) {
 }
 
 // ===== 再カテゴライズ =====
+// 再カテゴライズボタンの中身（通常時は線画の循環矢印，処理中（.spinning）はきらめき）
+// 関数宣言にしているのは，この行より前に定義された描画処理からも呼べるようにするため
+function recatIconHtml() {
+  return '<svg class="recat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M4.27 9.93 A8 8 0 0 1 19.73 9.93"/><polyline points="21.9 7.3 20.1 11.4 16.5 8.7"/>'
+    + '<g transform="rotate(180 12 12)"><path d="M4.27 9.93 A8 8 0 0 1 19.73 9.93"/><polyline points="21.9 7.3 20.1 11.4 16.5 8.7"/></g>'
+    + '</svg>'
+    + '<svg class="recat-spark" viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path class="s1" d="M10 4 L11.6 10.4 L18 12 L11.6 13.6 L10 20 L8.4 13.6 L2 12 L8.4 10.4 Z"/>'
+    + '<path class="s2" d="M18 2 L18.8 5.2 L22 6 L18.8 6.8 L18 10 L17.2 6.8 L14 6 L17.2 5.2 Z"/>'
+    + '<path class="s3" d="M18 15 L18.7 17.3 L21 18 L18.7 18.7 L18 21 L17.3 18.7 L15 18 L17.3 17.3 Z"/>'
+    + '</svg>';
+}
 const RECAT_MAX_CONCURRENT = 5;
 let recatActiveCount = 0;
 const recatDoneIds = new Set(); // 再カテゴライズ完了済みID（ページリロードまで保持）
@@ -11709,9 +11735,9 @@ async function recategorizeReceipt(id, btn, opts = {}) {
     const errText = btn.dataset.errorMsg || btn.title || '（エラー内容なし）';
     try {
       await navigator.clipboard.writeText(errText);
-      const prev = btn.textContent;
+      const prev = btn.innerHTML;
       btn.textContent = '📋';
-      setTimeout(() => { btn.textContent = prev; }, 1200);
+      setTimeout(() => { btn.innerHTML = prev; }, 1200);
     } catch {
       // クリップボードAPI未対応の場合はそのままリトライへ
       btn.classList.remove('error');
@@ -11728,10 +11754,10 @@ async function recategorizeReceipt(id, btn, opts = {}) {
   // （手入力・手動カテゴライズ済みをブロックする判定は廃止し、どのレシートでも実行できる）
 
   if (recatActiveCount >= RECAT_MAX_CONCURRENT) {
-    const orig = btn.textContent;
+    const orig = btn.innerHTML;
     btn.textContent = '⚠️';
     btn.title = `同時実行は最大${RECAT_MAX_CONCURRENT}件までです`;
-    setTimeout(() => { btn.textContent = orig; btn.title = '再カテゴライズ'; }, 2000);
+    setTimeout(() => { btn.innerHTML = orig; btn.title = '再カテゴライズ'; }, 2000);
     return;
   }
 
@@ -11740,7 +11766,7 @@ async function recategorizeReceipt(id, btn, opts = {}) {
   btn.title = '再カテゴライズ';
   delete btn.dataset.errorMsg;
   btn.classList.add('spinning');
-  btn.textContent = '🔄';
+  btn.innerHTML = recatIconHtml();
 
   try {
     const all = await dbGetAll('receipts');
@@ -11876,14 +11902,14 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
               btn.textContent = `⏳${remaining}s`;
             } else {
               clearInterval(_retryTimer);
-              btn.textContent = '🔄';
+              btn.innerHTML = recatIconHtml();
             }
           }, 1000);
         }
       }
     );
     if (_retryTimer) { clearInterval(_retryTimer); _retryTimer = null; }
-    btn.textContent = '🔄';
+    btn.innerHTML = recatIconHtml();
     btn.title = '再カテゴライズ';
 
     if (!res.ok) {
@@ -11990,7 +12016,7 @@ function _updateStatsListRecatBtn() {
   if (!btn || btn.dataset.busy === '1') return;
   const n = _statsListRecatTargets().length;
   btn.style.display = n > 0 ? '' : 'none';
-  btn.textContent = '\u{1F504}';
+  btn.innerHTML = recatIconHtml();
   btn.style.fontSize = '17px';
   btn.disabled = false;
   btn.classList.remove('spinning');
