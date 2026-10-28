@@ -2590,13 +2590,13 @@
       <!-- カテゴリ定義あり → select、なし → input -->
     </div>
     <div style="display:flex;gap:8px;">
-      <div style="flex:1;min-width:0;">
-        <div class="modal-label">金額（合計）</div>
-        <input type="number" id="edit-item-price" placeholder="0">
-      </div>
       <div style="width:80px;flex-shrink:0;">
         <div class="modal-label">個数</div>
         <input type="number" id="edit-item-qty" min="1" step="1" value="1" inputmode="numeric">
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div class="modal-label">金額（合計）</div>
+        <input type="number" id="edit-item-price" placeholder="0">
       </div>
     </div>
     <button class="btn btn-primary" onclick="saveItemEdit()">保存</button>
@@ -5889,7 +5889,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-27 16:30';
+const APP_BUILD = '2026-10-28 10:33';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
