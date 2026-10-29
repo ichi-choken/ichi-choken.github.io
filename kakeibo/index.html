@@ -2096,7 +2096,7 @@
       <!-- 支出 -->
       <div id="manual-large-row" style="margin-bottom:12px;">
         <div style="margin-bottom:4px;">
-          <div class="modal-label">支出<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリー未選択なら自動でカテゴリー分けをします）</span></div>
+          <div class="modal-label">支出<span id="manual-autocat-note" style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリー未選択なら自動でカテゴリー分けをします）</span></div>
         </div>
 
         <!-- カテゴリ ドロップダウン -->
@@ -2632,6 +2632,8 @@
       <div class="api-key-get-head">🔑 Gemini APIキーが未設定です</div>
       <div class="api-key-get-sub">レシートの読み取りに必要です。無料で取得できます。取得したキーを下の「Gemini API キー」欄に貼り付けて保存してください。</div>
       <a class="api-key-get-link" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio でAPIキーを取得 ↗</a>
+      <div class="api-key-get-sub" style="margin:12px 0 6px;">キーを取得できない場合も、手入力なら使えます（カテゴリーは自分で選ぶか「その他」になります）。</div>
+      <button type="button" id="api-key-skip-btn" class="btn btn-secondary" onclick="skipApiKey()" style="margin:0;">APIキーなしで使う（手入力のみ）</button>
     </div>
 
     <div class="modal-label">テーマ</div>
@@ -3079,7 +3081,7 @@ async function addUser() {
   await switchUser(name);
   // 追加が終わるとユーザーモーダルは閉じる。APIキーが未保存ならそのまま設定へ案内する。
   // switchUser 内の history.back() が処理されるのを待ってから開く。
-  if (!hasApiKey()) setTimeout(promptApiKey, 400);
+  if (shouldAutoPromptApiKey()) setTimeout(promptApiKey, 400);
 }
 
 async function switchUser(name) {
@@ -3119,6 +3121,16 @@ async function switchUser(name) {
 
 function hasAppUser() { return !!getCurrentUser(); }
 function hasApiKey()  { return !!localStorage.getItem('gemini_api_key'); }
+// 「APIキーなしで使う」を選んだか。選んでいれば起動時・ユーザー追加時に設定画面を自動で開かない
+//（レシート読み取りや🔄など、キーが必要な操作をしたときは従来どおり案内する）
+const API_KEY_SKIP_KEY = 'api_key_skipped';
+function isApiKeySkipped() { return localStorage.getItem(API_KEY_SKIP_KEY) === '1'; }
+function shouldAutoPromptApiKey() { return !hasApiKey() && !isApiKeySkipped(); }
+// 起動時の案内：ユーザー未登録ならユーザー追加、キー未設定かつ「キーなしで使う」を選んでいなければキーの案内
+function promptSetupOnLaunch() {
+  if (!hasAppUser()) { promptAddUser(); return; }
+  if (shouldAutoPromptApiKey()) promptApiKey();
+}
 
 // 案内は画面下部のトースト。履歴スタックには積まず、
 // 対象の操作が完了するか、案内元のモーダルを閉じた時点で自動的に消える。
@@ -5902,7 +5914,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-28 11:35';
+const APP_BUILD = '2026-10-29 15:02';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6425,12 +6437,25 @@ function setExportStatus(msg, color) {
   if (el) { el.textContent = msg; el.style.color = color; }
 }
 
+// 「APIキーなしで使う」：以後は起動時に設定画面を自動で開かない。手入力の保存はキーなしでもできる
+function skipApiKey() {
+  localStorage.setItem(API_KEY_SKIP_KEY, '1');
+  _saveSettingIDB(API_KEY_SKIP_KEY, '1');
+  hideOnboardToast();
+  _syncManualAutoCatNote();
+  _skipNextCloseTopLayer = true;
+  _closeSettingsInner();
+  history.back(); // pushStateエントリを消費（閉じ処理は上で完了済み）
+  showStatus('success', 'APIキーなしで使います（手入力で記録できます。キーは後から設定画面で保存できます）');
+}
+
 function saveApiKey() {
   const key = document.getElementById('api-key-input').value.trim();
   if (!key) { alert('APIキーを入力してください'); return; }
   localStorage.setItem('gemini_api_key', key);
   _saveSettingIDB('gemini_api_key', key);
   updateApiKeyGetBox();
+  _syncManualAutoCatNote(); // 手入力の注記を「自動でカテゴリー分け」に戻す
   hideOnboardToast();
   _skipNextCloseTopLayer = true;
   _closeSettingsInner();
@@ -11393,16 +11418,18 @@ async function initApp(isResume) {
       _loadSettingIDB('app_theme'),
       _loadSettingIDB('gemini_api_key'),
       _loadSettingIDB(PREFS_KEY),
+      _loadSettingIDB(API_KEY_SKIP_KEY),
     ]);
     const timeout = new Promise(res => setTimeout(() => res(null), 5000));
     const restored = await Promise.race([restore, timeout]);
     if (restored) {
-      const [idbUser, idbUsers, idbTheme, idbKey, idbPrefs] = restored;
+      const [idbUser, idbUsers, idbTheme, idbKey, idbPrefs, idbKeySkip] = restored;
       // IDBに値があれば常にlocalStorageへ同期（localStorageが古くても上書き）
       if (idbUser)  localStorage.setItem(CURRENT_USER_KEY, idbUser);
       if (idbUsers) localStorage.setItem(USERS_KEY, idbUsers);
       if (idbTheme) localStorage.setItem('app_theme', idbTheme);
       if (idbKey)   localStorage.setItem('gemini_api_key', idbKey);
+      if (idbKeySkip) localStorage.setItem(API_KEY_SKIP_KEY, idbKeySkip);
       if (idbPrefs) { localStorage.setItem(PREFS_KEY, idbPrefs); _prefs = null; }
     } else {
       console.warn('IDB設定の復元がタイムアウトしました（localStorageの値で続行）');
@@ -11472,8 +11499,8 @@ async function initApp(isResume) {
   if (!isResume && seededDummy) {
     setTimeout(() => showStatus('success',
       'お試し用の「ダミー」ユーザーで愛知県のサンプルデータを表示しています。使い始めるときは画面上部の👤から自分のユーザーを追加してください'), 600);
-    if (!hasApiKey()) setTimeout(promptApiKey, 400);
-  } else if (!isResume) setTimeout(promptSetup, 400);
+    if (shouldAutoPromptApiKey()) setTimeout(promptApiKey, 400);
+  } else if (!isResume) setTimeout(promptSetupOnLaunch, 400);
 
   // ── URLトリガーによるエクスポート ──
   // 「…/#export」で開かれたら書き出す。自動判断ではなく、MacroDroid等からの
@@ -12442,6 +12469,7 @@ function initManualEntry() {
   refreshManualCategoryUI();
   rebuildStoreDropdown();
   renderManualItems();
+  _syncManualAutoCatNote(); // APIキーの有無で「未選択なら自動分類／その他で保存」の注記を切り替える
 }
 
 // 大カテゴリ select を構築（largeDef あり時のみ表示）
@@ -13009,6 +13037,28 @@ function syncManualPricePlaceholder() {
   priceEl.placeholder = qty >= 2 ? `${qty}個分の金額` : '金額';
 }
 
+// ===== APIキー未設定のときの手入力 =====
+// 自動カテゴライズ（Gemini）が使えないので、カテゴリ未選択の支出は「その他」系に入れて保存する。
+// 大カテゴリ lIdx の中から「その他」で始まる中カテゴリ（例：食費 → その他食費）を探す。無ければ null
+function _manualFallbackMiddle(lIdx) {
+  const def = (largeDef && largeDef.length > 0) ? largeDef : DEFAULT_LARGE_DEF;
+  const ld = (lIdx != null && lIdx >= 0) ? def[lIdx] : null;
+  if (!ld) return null;
+  const mids = (ld.middles || []).map(entry =>
+    (categoryDef || []).find(m => m.id === entry) || (categoryDef || []).find(m => m.middle === entry) || null
+  ).filter(Boolean);
+  return mids.find(m => String(m.middle || '').startsWith('その他')) || null;
+}
+
+// 支出ラベル横の注記を APIキーの有無に合わせる
+function _syncManualAutoCatNote() {
+  const note = document.getElementById('manual-autocat-note');
+  if (!note) return;
+  note.textContent = hasApiKey()
+    ? '（カテゴリー未選択なら自動でカテゴリー分けをします）'
+    : '（APIキー未設定のため自動分類はしません。未選択なら「その他」で保存します）';
+}
+
 function addManualItem() {
   const nameEl = document.getElementById('manual-item-name');
   const priceEl = document.getElementById('manual-item-price');
@@ -13036,6 +13086,16 @@ function addManualItem() {
   // 支出で中カテゴリ未選択の商品は、保存後に自動カテゴライズする対象として印を付ける
   let autoCat = false;
   try { autoCat = !selVal && _manualEntryType === 'expense'; } catch (_) {}
+  // APIキーが無いと自動カテゴライズできないので、印は付けずにその場で「その他」系へ入れて保存できるようにする
+  //（大カテゴリを選んでいればその中の「その他◯◯」、未選択なら「未分類 › その他」）
+  let noKeyFallback = false;
+  if (autoCat && !hasApiKey()) {
+    const fb = _manualFallbackMiddle(_manualLargeIdx);
+    middle = fb ? fb.middle : 'その他';
+    middleId = fb ? fb.id : null;
+    autoCat = false;
+    noKeyFallback = true;
+  }
 
   // 支出／収入は商品ごとに持つ（同じレシートに支出の商品と収入の商品を混在できる）
   const isIncomeItem = _manualEntryType === 'income';
@@ -13047,7 +13107,8 @@ function addManualItem() {
     price,
     quantity,
     entry_type: isIncomeItem ? 'income' : 'expense',
-    ...(autoCat ? { _autoCat: true } : {})
+    ...(autoCat ? { _autoCat: true } : {}),
+    ...(noKeyFallback ? { _noKeyFallback: true } : {})
   });
   nameEl.value = '';
   priceEl.value = '';
@@ -13195,17 +13256,21 @@ async function saveManualReceipt() {
     // 収入の場合は price を負値にして保存（集計で区別）
   // 自動カテゴライズ対象の商品 index を控え、保存データからは印を外す
   const autoCatIdx = [];
+  let noKeyFallbackCount = 0; // APIキー無しで「その他」系に入れた商品の数（保存メッセージ用）
   const signedItems = manualItems.map((it, i) => {
-    const { _autoCat, _existing, ...rest } = it;
+    const { _autoCat, _existing, _noKeyFallback, ...rest } = it;
     if (_autoCat) autoCatIdx.push(i);
+    if (_noKeyFallback) noKeyFallbackCount++;
     const type = rest.entry_type === 'income' ? 'income' : 'expense';
     // 収入はマイナスで保存。支出は入力どおり（値引きのマイナス入力もそのまま）
     return { ...rest, price: type === 'income' ? -Math.abs(rest.price || 0) : (rest.price || 0), entry_type: type };
   });
   const total = signedItems.reduce((s, i) => s + (i.price || 0), 0);
     // 詳細の「＋ 商品を追加」から開いたときは、新しいレシートではなく元のレシートを更新する
+    // APIキー無しで「その他」系に入れた商品があれば、保存メッセージに添える
+    const noKeyNote = noKeyFallbackCount > 0 ? '（APIキー未設定のため、カテゴリ未選択の商品は「その他」で保存しました）' : '';
     if (_manualEditTargetId != null) {
-      await _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId, date, time, signedItems, allIncome, autoCatIdx, largeHint });
+      await _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId, date, time, signedItems, allIncome, autoCatIdx, largeHint, noKeyNote });
       return;
     }
     const newId = await dbAdd('receipts', {
@@ -13230,7 +13295,7 @@ async function saveManualReceipt() {
       showManualStatus('success', '保存しました！（カテゴリを自動判定中…）');
       autoCategorizeManualItems(newId, autoCatIdx, largeHint);
     } else {
-      showManualStatus('success', '保存しました！');
+      showManualStatus('success', '保存しました！' + noKeyNote);
     }
   } catch(err) {
     showManualStatus('error', `保存エラー: ${err.message}`);
@@ -13318,7 +13383,7 @@ async function _returnToReceiptDetail(id, ctx) {
   else await _showDetailBase(r);
 }
 
-async function _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId, date, time, signedItems, allIncome, autoCatIdx, largeHint }) {
+async function _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId, date, time, signedItems, allIncome, autoCatIdx, largeHint, noKeyNote = '' }) {
   const id = _manualEditTargetId;
   const ctx = _manualEditReturnCtx;
   const orig = (await dbGetAll('receipts')).find(x => x.id === id);
@@ -13356,7 +13421,7 @@ async function _saveManualIntoExistingReceipt({ store, storeBrand, storeBrandId,
     showManualStatus('success', 'レシートを更新しました！（カテゴリを自動判定中…）');
     autoCategorizeManualItems(id, autoCatIdx, largeHint);
   } else {
-    showManualStatus('success', 'レシートを更新しました！');
+    showManualStatus('success', 'レシートを更新しました！' + noKeyNote);
   }
   // 元のレシートの詳細へ戻って結果を見せる
   await _returnToReceiptDetail(id, ctx);
@@ -13399,8 +13464,9 @@ function setManualEntryType(type) {
   _syncManualStoreArea();
   // ラベル切り替え
   const label = document.querySelector('#manual-large-row .modal-label');
-  // 支出は中カテゴリ未選択なら保存後に自動カテゴライズされることを添える
-  if (label) label.innerHTML = isExpense ? '支出<span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;">（カテゴリー未選択なら自動でカテゴリー分けをします）</span>' : '収入';
+  // 支出は中カテゴリ未選択のときの扱い（APIキーの有無で変わる）を添える
+  if (label) label.innerHTML = isExpense ? '支出<span id="manual-autocat-note" style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px;"></span>' : '収入';
+  _syncManualAutoCatNote();
 
   const INCOME_NAMES = loadIncomeCategories();
   const catList  = document.getElementById('manual-cat-list');
