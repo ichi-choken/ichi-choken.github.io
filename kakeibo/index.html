@@ -6005,7 +6005,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-31 11:53';
+const APP_BUILD = '2026-10-31 11:56';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6883,11 +6883,12 @@ ${prompt}`
       {
         maxRetries: 5,
         baseDelayMs: 1000,
-        onRetry: (attempt, delayMs) => {
+        onRetry: (attempt, delayMs, reason) => {
           const sec = Math.round(delayMs / 1000);
           showStatus('loading');
           const sp = document.querySelector('#status-loading span');
-          if (sp) sp.textContent = `混雑しているため再試行しています… (${attempt}/5回目・${sec}秒後)`;
+          const why = reason === 'quota' ? 'APIの使用制限（1分あたり）に達したため待機しています' : '混雑しているため再試行しています';
+          if (sp) sp.textContent = `${why}… (${attempt}/5回目・${sec}秒後)`;
         }
       }
     );
@@ -6895,10 +6896,7 @@ ${prompt}`
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      const status = res.status;
-      const e = new Error(err.error?.message || `HTTP ${status}`);
-      e.status = status;
-      throw e;
+      throw buildGeminiHttpError(res.status, err);
     }
 
     const data = await res.json();
@@ -8816,14 +8814,28 @@ function toJapaneseGeminiError(err) {
   const msg = (err?.message || String(err)).toLowerCase();
   const status = err?.status;
 
+  // API の使用制限（他の判定より先に見る）
+  if (status === 429 || /quota|rate.?limit|resource.?exhausted|too many request/i.test(msg)) {
+    const model = err?.quotaModel || getGeminiModel();
+    if (/limit:\s*0\b/.test(msg)) {
+      return `APIの使用制限：${model} は無料枠で使える回数が0回のため使えません。設定から別のモデルに切り替えてください。`;
+    }
+    if (err?.quotaKind === 'daily') {
+      const reset = nextGeminiDailyResetLabel();
+      return `APIの使用制限：${model} の1日あたりの上限に達しました。` +
+        (reset ? `${reset}ごろにリセットされます。` : '日本時間の夕方（16〜17時ごろ）にリセットされます。') +
+        '設定で別のモデルに切り替えると続けて使える場合があります。';
+    }
+    if (err?.quotaKind === 'minute') {
+      const wait = err.retryDelaySec ? `約${err.retryDelaySec}秒` : '1分ほど';
+      return `APIの使用制限：1分あたりの上限に達しました。${wait}待ってから再試行してください。`;
+    }
+    return 'APIの使用制限に達しました。しばらく経ってから再試行するか、設定で別のモデルに切り替えてください。';
+  }
+
   // メモリ不足（Android WebView / 低メモリ端末）
   if (/メモリ不足|out.?of.?memory|alloc|oom|memory|compress|canvas/i.test(msg)) {
     return 'メモリ不足で処理できませんでした。他のアプリをすべて閉じてから再試行してください。';
-  }
-
-  // 混雑・過負荷・リトライ枯渇
-  if (status === 429 || /quota|rate.?limit|resource.?exhausted|too many request/i.test(msg)) {
-    return 'APIの使用制限に達しました。しばらく経ってからもう一度お試しください。';
   }
   if (status === 503 || /overload|unavailable|server.?busy|capacity/i.test(msg)) {
     return 'サーバーが混雑しています。しばらく待ってから再試行してください。';
@@ -8876,6 +8888,40 @@ function toJapaneseGeminiError(err) {
  * @param {Function} [opts.onRetry]           - リトライ直前に呼ばれるコールバック (attempt, delayMs) => void
  * @returns {Promise<Response>} - 成功時の Response オブジェクト
  */
+// Gemini のエラー応答から Error を作る。429 のときは使用制限の種類（日次／分間）と待ち時間も付ける
+// 例: details に QuotaFailure（quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"）と RetryInfo（retryDelay: "43s"）
+function buildGeminiHttpError(status, body) {
+  const e = new Error(body?.error?.message || `HTTP ${status}`);
+  e.status = status;
+  const details = Array.isArray(body?.error?.details) ? body.error.details : [];
+  const violations = details.flatMap(d => Array.isArray(d.violations) ? d.violations : []);
+  const ids = violations.map(v => `${v.quotaId || ''} ${v.quotaMetric || ''}`).join(' ');
+  if (/PerDay/i.test(ids)) e.quotaKind = 'daily';
+  else if (/PerMinute/i.test(ids)) e.quotaKind = 'minute';
+  const model = violations.map(v => v.quotaDimensions?.model).find(Boolean);
+  if (model) e.quotaModel = model;
+  const delay = details.map(d => d.retryDelay).find(Boolean);
+  if (delay) {
+    const sec = parseFloat(delay);
+    if (isFinite(sec)) e.retryDelaySec = Math.ceil(sec);
+  }
+  return e;
+}
+
+// 日次上限（太平洋時間 0 時にリセット）が次にリセットされる日時を端末の時刻で返す
+function nextGeminiDailyResetLabel() {
+  try {
+    const now = new Date();
+    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const p = Object.fromEntries(fmt.formatToParts(now).map(x => [x.type, x.value]));
+    const elapsed = ((+p.hour) % 24) * 3600 + (+p.minute) * 60 + (+p.second);
+    const reset = new Date(now.getTime() + (24 * 3600 - elapsed) * 1000);
+    return reset.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (_) {
+    return null;
+  }
+}
+
 async function callGeminiWithRetry(url, fetchOptions, opts = {}) {
   const maxRetries  = opts.maxRetries  ?? 5;
   const baseDelayMs = opts.baseDelayMs ?? 1000;
@@ -8896,8 +8942,7 @@ async function callGeminiWithRetry(url, fetchOptions, opts = {}) {
 
       // リトライ対象ステータス
       const errBody = await res.json().catch(() => ({}));
-      lastError = new Error(errBody.error?.message || `HTTP ${res.status}`);
-      lastError.status = res.status;
+      lastError = buildGeminiHttpError(res.status, errBody);
 
     } catch (networkErr) {
       // ネットワーク障害もリトライ対象
@@ -8907,8 +8952,17 @@ async function callGeminiWithRetry(url, fetchOptions, opts = {}) {
     // 最後の試行だった場合はリトライせずループを抜ける
     if (attempt >= maxRetries) break;
 
-    const delayMs = baseDelayMs * Math.pow(2, attempt);
-    if (onRetry) onRetry(attempt + 1, delayMs);
+    // 1日あたりの使用制限はリセットまで待っても無駄なので、すぐにエラーを返す
+    if (lastError?.quotaKind === 'daily') break;
+    // 使用制限で 1 分を超える待機を求められたら、待たせずにエラーを返す
+    if (lastError?.status === 429 && lastError.retryDelaySec > 60) break;
+
+    let delayMs = baseDelayMs * Math.pow(2, attempt);
+    if (lastError?.status === 429 && lastError.retryDelaySec) {
+      delayMs = Math.max(delayMs, lastError.retryDelaySec * 1000);
+    }
+    const reason = lastError?.status === 429 ? 'quota' : 'busy';
+    if (onRetry) onRetry(attempt + 1, delayMs, reason);
     await new Promise(resolve => setTimeout(resolve, delayMs));
   }
 
@@ -12008,11 +12062,13 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
       {
         maxRetries: 5,
         baseDelayMs: 1000,
-        onRetry: (attempt, delayMs) => {
+        onRetry: (attempt, delayMs, reason) => {
           // ボタンにカウントダウン表示
           let remaining = Math.round(delayMs / 1000);
           btn.textContent = `⏳${remaining}s`;
-          btn.title = `混雑しているため再試行中 (${attempt}/5回目)`;
+          btn.title = reason === 'quota'
+            ? `APIの使用制限（1分あたり）のため待機中 (${attempt}/5回目)`
+            : `混雑しているため再試行中 (${attempt}/5回目)`;
           if (_retryTimer) clearInterval(_retryTimer);
           _retryTimer = setInterval(() => {
             remaining--;
@@ -12032,11 +12088,7 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      const status = res.status;
-      if (status === 429 || status === 503) {
-        throw new Error('現在サーバーが大変混雑しています。しばらく経ってからもう一度お試しください。');
-      }
-      throw new Error(err.error?.message || `HTTP ${status}`);
+      throw buildGeminiHttpError(res.status, err);
     }
 
     const data = await res.json();
