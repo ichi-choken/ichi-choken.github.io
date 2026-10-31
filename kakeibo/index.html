@@ -6005,7 +6005,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-10-29 22:57';
+const APP_BUILD = '2026-10-31 11:53';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6557,7 +6557,7 @@ function saveApiKey() {
 // ===== 使用モデル（2026-10 時点の Gemini API に合わせた選択肢） =====
 // 2.0-flash は 2026-06-01 に提供終了、1.5 系は一覧から消えたため除外。
 // 2.5 系は「以前から使っている人のみ」提供継続（終了日未定）なので、既存ユーザー向けに残す
-const GEMINI_DEFAULT_MODEL = 'gemini-3.8-flash';
+const GEMINI_DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 const GEMINI_MODELS = [
   { id: 'gemini-3.8-flash',      label: '最新・高精度' },
   { id: 'gemini-3.6-flash',      label: '前世代・バランス型' },
