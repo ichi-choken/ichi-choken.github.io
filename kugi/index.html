@@ -1,133 +1,68 @@
 <!DOCTYPE html>
-<html lang="en-us">
+<html lang="ja">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity Web Player | Kugi</title>
-    <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>釘撒きトラック</title>
+    <meta name="description" content="トラックが道路に釘をばら撒き，後ろの車を30秒でできるだけ多くパンクさせるブラウザゲーム．">
+    <!-- X などに URL を貼ったときのカード -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="釘撒きトラック">
+    <meta property="og:description" content="釘を撒いて，30秒で何台パンクさせられる？">
+    <meta property="og:url" content="https://ichi-choken.github.io/kugi/">
+    <meta property="og:image" content="https://ichi-choken.github.io/kugi/og.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <style>
+      /* PC では 9:16 のまま画面に収め，スマホでは画面いっぱいに出す */
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+      body { background: linear-gradient(#dbeffc, #78bbed); font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; touch-action: none; }
+      #unity-canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #9fcdf2; outline: none; display: block; }
+      body.mobile #unity-canvas { left: 0; top: 0; transform: none; width: 100%; height: 100%; }
+      #loading { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 220px; text-align: center; color: #22252b; }
+      #loading .title { font-size: 22px; font-weight: 700; margin-bottom: 14px; }
+      #loading .bar { height: 10px; border-radius: 5px; background: rgba(34, 37, 43, 0.2); overflow: hidden; }
+      #loading .fill { height: 100%; width: 0; background: #22252b; }
+    </style>
   </head>
   <body>
-    <div id="unity-container" class="unity-desktop">
-      <canvas id="unity-canvas" width=540 height=960 tabindex="-1"></canvas>
-      <div id="unity-loading-bar">
-        <div id="unity-logo"></div>
-        <div id="unity-progress-bar-empty">
-          <div id="unity-progress-bar-full"></div>
-        </div>
-      </div>
-      <div id="unity-warning"> </div>
-      <div id="unity-footer">
-        <div id="unity-logo-title-footer"></div>
-        <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">Kugi</div>
-      </div>
-    </div>
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="loading"><div class="title">釘撒きトラック</div><div class="bar"><div class="fill" id="loading-fill"></div></div></div>
+    <script src="Build/WebGL.loader.js"></script>
     <script>
       var canvas = document.querySelector("#unity-canvas");
+      var mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (mobile) document.body.classList.add("mobile");
 
-      // Shows a temporary message banner/ribbon for a few seconds, or
-      // a permanent error message on top of the canvas if type=='error'.
-      // If type=='warning', a yellow highlight color is used.
-      // Modify or remove this function to customize the visually presented
-      // way that non-critical warnings and error messages are presented to the
-      // user.
-      function unityShowBanner(msg, type) {
-        var warningBanner = document.querySelector("#unity-warning");
-        function updateBannerVisibility() {
-          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
-        }
-        var div = document.createElement('div');
-        div.innerHTML = msg;
-        warningBanner.appendChild(div);
-        if (type == 'error') div.style = 'background: red; padding: 10px;';
-        else {
-          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
-          setTimeout(function() {
-            warningBanner.removeChild(div);
-            updateBannerVisibility();
-          }, 5000);
-        }
-        updateBannerVisibility();
+      // PC：窓の中に入る一番大きな 9:16 にする
+      function fit() {
+        if (mobile) return;
+        var h = window.innerHeight;
+        var w = Math.round(h * 9 / 16);
+        if (w > window.innerWidth) { w = window.innerWidth; h = Math.round(w * 16 / 9); }
+        canvas.style.width = w + "px";
+        canvas.style.height = h + "px";
       }
+      fit();
+      window.addEventListener("resize", fit);
 
-      var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/WebGL.loader.js";
-      var config = {
+      createUnityInstance(canvas, {
         arguments: [],
-        dataUrl: buildUrl + "/WebGL.data.unityweb",
-        frameworkUrl: buildUrl + "/WebGL.framework.js.unityweb",
-        codeUrl: buildUrl + "/WebGL.wasm.unityweb",
+        dataUrl: "Build/WebGL.data.unityweb",
+        frameworkUrl: "Build/WebGL.framework.js.unityweb",
+        codeUrl: "Build/WebGL.wasm.unityweb",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "Kugi",
         productVersion: "0.1.0",
-        showBanner: unityShowBanner,
-        // errorHandler: function(err, url, line) {
-        //    alert("error " + err + " occurred at line " + line);
-        //    // Return 'true' if you handled this error and don't want Unity
-        //    // to process it further, 'false' otherwise.
-        //    return true;
-        // },
-      };
-
-      // By default, Unity keeps WebGL canvas render target size matched with
-      // the DOM size of the canvas element (scaled by window.devicePixelRatio)
-      // Set this to false if you want to decouple this synchronization from
-      // happening inside the engine, and you would instead like to size up
-      // the canvas DOM size and WebGL render target sizes yourself.
-      // config.matchWebGLToCanvasSize = false;
-
-      // If you would like all file writes inside Unity Application.persistentDataPath
-      // directory to automatically persist so that the contents are remembered when
-      // the user revisits the site the next time, uncomment the following line:
-      // config.autoSyncPersistentDataPath = true;
-      // This autosyncing is currently not the default behavior to avoid regressing
-      // existing user projects that might rely on the earlier manual
-      // JS_FileSystem_Sync() behavior, but in future Unity version, this will be
-      // expected to change.
-
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // Mobile device style: fill the whole browser client area with the game canvas:
-
-        var meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
-        document.getElementsByTagName('head')[0].appendChild(meta);
-        document.querySelector("#unity-container").className = "unity-mobile";
-        canvas.className = "unity-mobile";
-
-        // To lower canvas resolution on mobile devices to gain some
-        // performance, uncomment the following line:
-        // config.devicePixelRatio = 1;
-
-
-      } else {
-        // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
-        canvas.style.width = "540px";
-        canvas.style.height = "960px";
-      }
-
-      document.querySelector("#unity-loading-bar").style.display = "block";
-
-      var script = document.createElement("script");
-      script.src = loaderUrl;
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
-              }).then((unityInstance) => {
-                document.querySelector("#unity-loading-bar").style.display = "none";
-                document.querySelector("#unity-fullscreen-button").onclick = () => {
-                  unityInstance.SetFullscreen(1);
-                };
-
-              }).catch((message) => {
-                alert(message);
-              });
-            };
-
-      document.body.appendChild(script);
-
+      }, function (progress) {
+        document.getElementById("loading-fill").style.width = (100 * progress) + "%";
+      }).then(function () {
+        document.getElementById("loading").remove();
+        canvas.focus();
+      }).catch(function (message) {
+        document.querySelector("#loading .title").textContent = "読み込めませんでした";
+        console.error(message);
+      });
     </script>
   </body>
 </html>
