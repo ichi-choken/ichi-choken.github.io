@@ -5830,6 +5830,80 @@ function isStoreTypeCategory(middleName) {
   return STORE_TYPE_KEYWORDS.some(kw => middleName.includes(kw));
 }
 
+// ===== 飲食店（外食）のレシートを全品「外食」にそろえる後処理 =====
+// AIが居酒屋のビール・サワーだけ「お酒」に分けてしまうことがあるため、
+// 分類結果を見て、外食の店と判断できれば残りの商品も外食の中カテゴリへ寄せる。
+const DINING_CATEGORY_KEYWORDS = ['外食', '飲食', 'レストラン', '居酒屋'];
+// 店名だけで居酒屋と分かるもの（外食の商品がひとつも無いときの判断に使う）
+const IZAKAYA_STORE_PATTERN = /居酒屋|酒場|大衆酒|立ち?飲み|立呑|串カツ|串かつ|焼鳥|焼き鳥|やきとり|炉端|もつ焼|鳥貴族|山ちゃん|新時代|てけてけ|鳥メロ|ミライザカ|魚民|白木屋|笑笑|和民|はなの舞|金の蔵|庄や|磯丸水産|塚田農場|一軒め/;
+// 飲み物系の中カテゴリ（外食の店でこれだけが外食から外れていたら、注文したドリンクとみなす）
+const DRINK_CATEGORY_PATTERN = /お酒|ソフトドリンク|ノンアルコール|乳飲料|ドリンク|飲料/;
+
+function _isDiningCategory(middleName) {
+  return !!middleName && DINING_CATEGORY_KEYWORDS.some(kw => middleName.includes(kw));
+}
+
+// items：商品配列（middle_category / small_category を書き換える）
+// store：店名
+// opts.targetIdx：書き換えてよい商品の index 配列（省略時は全商品）
+// opts.isIncome(item)：収入の商品か（収入は対象外）
+// 戻り値：書き換えた商品の index 配列
+function unifyDiningReceiptItems(items, store, opts = {}) {
+  if (!Array.isArray(items) || items.length === 0 || !categoryDef) return [];
+  const isIncome = opts.isIncome || (() => false);
+  const expIdx = items.map((_, i) => i).filter(i => items[i] && !isIncome(items[i]));
+  if (expIdx.length === 0) return [];
+
+  const diningMids = categoryDef.map(m => m.middle).filter(_isDiningCategory);
+  if (diningMids.length === 0) return [];
+
+  // 外食系に分類された商品を数え、いちばん多い中カテゴリを統一先にする
+  const midCount = {};
+  expIdx.forEach(i => {
+    const mid = items[i].middle_category;
+    if (diningMids.includes(mid)) midCount[mid] = (midCount[mid] || 0) + 1;
+  });
+  const diningTotal = Object.values(midCount).reduce((a, b) => a + b, 0);
+  const others = expIdx.filter(i => !midCount[items[i].middle_category]);
+  if (others.length === 0) return [];
+
+  const storeIsIzakaya = IZAKAYA_STORE_PATTERN.test(store || '');
+  const othersAreDrinks = others.every(i => DRINK_CATEGORY_PATTERN.test(items[i].middle_category || ''));
+  const apply =
+    (diningTotal > 0 && diningTotal * 2 >= expIdx.length) ||  // 半分以上が外食
+    (diningTotal > 0 && othersAreDrinks) ||                     // 外食＋ドリンクだけ
+    storeIsIzakaya;                                             // 店名が居酒屋
+  if (!apply) return [];
+
+  let target = Object.keys(midCount).sort((a, b) => midCount[b] - midCount[a])[0];
+  if (!target) target = diningMids.includes('外食') ? '外食' : diningMids[0];
+  const targetSmalls = categoryDef.find(m => m.middle === target)?.small || [];
+
+  // 小カテゴリ：統一先で最も多いもの → 店名が居酒屋なら「居酒屋」 → 最後の選択肢
+  const smallCount = {};
+  expIdx.forEach(i => {
+    const it = items[i];
+    if (it.middle_category === target && targetSmalls.includes(it.small_category)) {
+      smallCount[it.small_category] = (smallCount[it.small_category] || 0) + 1;
+    }
+  });
+  let fallbackSmall = Object.keys(smallCount).sort((a, b) => smallCount[b] - smallCount[a])[0];
+  if (!fallbackSmall && storeIsIzakaya && targetSmalls.includes('居酒屋')) fallbackSmall = '居酒屋';
+  if (!fallbackSmall) fallbackSmall = targetSmalls[targetSmalls.length - 1] || 'その他';
+
+  const allowed = Array.isArray(opts.targetIdx) ? new Set(opts.targetIdx) : null;
+  const changed = [];
+  others.forEach(i => {
+    if (allowed && !allowed.has(i)) return;
+    const it = items[i];
+    it.middle_category = target;
+    it.middle_category_id = midNameToId(target) || null;
+    it.small_category = fallbackSmall;
+    changed.push(i);
+  });
+  return changed;
+}
+
 // カテゴリ定義からプロンプト用文字列を生成
 function buildCategoryPrompt() {
   if (!categoryDef || categoryDef.length === 0) return null;
@@ -5885,6 +5959,8 @@ function buildCategoryPrompt() {
 - レシートの店名から店舗タイプを判断し、以下の中カテゴリに該当すると判断できる場合は、商品ごとの中カテゴリにかかわらず全商品をそのカテゴリで統一すること
 - 対象カテゴリ：${storeTypeCategories.map(c => `「${c}」`).join('、')}
 - 例：店名がセブン-イレブン・ローソン・ファミリーマート等なら「コンビニ」、マクドナルド・吉野家・松屋・カフェ等なら「外食・テイクアウト」など
+- 居酒屋・焼き鳥屋・串カツ屋・バル等（例：鳥貴族、串カツ田中、世界の山ちゃん、新時代、てけてけ、魚民、磯丸水産）は「外食」。ビール・サワー・ハイボール・ソフトドリンク等の飲み物も「お酒」「ソフトドリンク」にせず、料理と同じ外食のカテゴリにすること
+- 店名に「居酒屋」と書かれていなくても、注文内容（生ビール・サワー・串・枝豆・おでん等）から飲食店のレシートと分かる場合は同様に扱うこと
 - 店名が上記に明らかに該当する場合のみ適用し、判断が難しい場合は通常の商品別カテゴライズを行うこと`
     : '';
 
@@ -6005,7 +6081,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-01 15:56';
+const APP_BUILD = '2026-11-03 13:24';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6908,6 +6984,13 @@ ${prompt}`
     // 店ブランドの表記ゆれを登録済みの表記に揃える（例：welcia → ウエルシア）。店名でないものは null
     parsedData.store = (parsedData.store && String(parsedData.store).trim() && !isNonStoreName(parsedData.store)) ? String(parsedData.store).trim() : null;
     parsedData.store_brand = cleanStoreBrand(parsedData.store_brand);
+    // 飲食店のレシートなら、外食から漏れた飲み物なども外食にそろえる
+    {
+      const _incN = incomeCategoryNames();
+      unifyDiningReceiptItems(parsedData.items, parsedData.store, {
+        isIncome: it => it.entry_type === 'income' || _incN.has(it.middle_category),
+      });
+    }
 
     if (!parsedData.items || parsedData.items.length === 0) {
       parsedData = null;
@@ -12016,6 +12099,8 @@ async function recategorizeReceipt(id, btn, opts = {}) {
 - 店名が以下の店舗タイプに明らかに該当する場合、全商品の middle_category をそのカテゴリで統一すること
 - 対象カテゴリ：${storeTypeMids.map(c => `「${c}」`).join('、')}
 - 例：アピタ・イオン・ヨークベニマル等のスーパーは商品別カテゴリを適用、セブン-イレブン・ローソン・ファミリーマート等は「コンビニ」、マクドナルド・吉野家・スターバックス等は「外食・テイクアウト」
+- 居酒屋・焼き鳥屋・串カツ屋・バル等（例：鳥貴族、串カツ田中、世界の山ちゃん、新時代、てけてけ、魚民、磯丸水産）は「外食」。ビール・サワー・ハイボール・ソフトドリンク等の飲み物も「お酒」「ソフトドリンク」にせず、料理と同じ外食のカテゴリにすること
+- 店名に「居酒屋」と書かれていなくても、注文内容（生ビール・サワー・串・枝豆・おでん等）から飲食店のレシートと分かる場合は同様に扱うこと
 - 店名から判断できない・個人店・スーパー等は通常の商品別カテゴライズを行うこと`
       : '';
 
@@ -12133,6 +12218,12 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
       record.items[index].middle_category = mid;
       record.items[index].middle_category_id = midNameToId(mid) || null;
       record.items[index].small_category = sm;
+    });
+
+    // 飲食店のレシートなら、外食から漏れた飲み物なども外食にそろえる
+    unifyDiningReceiptItems(record.items, record.store, {
+      targetIdx,
+      isIncome: it => itemIsIncome(record, it, _incNames),
     });
 
     await dbPut('receipts', record);
