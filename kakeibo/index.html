@@ -2081,6 +2081,18 @@
           <div class="result-total" id="res-total" style="margin-bottom:0;">¥—</div>
           <button onclick="openPreviewReceiptEdit()" style="background:none;border:1px solid var(--border);color:var(--text-dim);font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit;">✏️ 店舗・日付</button>
         </div>
+        <!-- 割り勘（保存するレシートに split_enabled / split_count を付ける） -->
+        <div class="split-bar manual-split-bar" id="split-bar-scan">
+          <span class="split-bar-label">割り勘</span>
+          <div class="split-toggle" id="split-toggle-scan" onclick="toggleScanSplit()"></div>
+          <div class="split-count-wrap hidden" id="split-count-wrap-scan">
+            <button type="button" class="split-count-btn" data-hold-repeat onclick="changeScanSplitCount(-1)">−</button>
+            <span class="split-count-val" id="split-count-val-scan">2</span>
+            <span class="split-count-unit">人</span>
+            <button type="button" class="split-count-btn" data-hold-repeat onclick="changeScanSplitCount(+1)">＋</button>
+          </div>
+          <span class="manual-split-share" id="scan-split-share"></span>
+        </div>
         <ul class="item-list" id="res-items"></ul>
         <button onclick="openPreviewAddItem()" style="width:100%;margin-top:10px;background:none;border:1px dashed var(--border);color:var(--text-dim);font-size:12px;padding:8px;border-radius:6px;cursor:pointer;font-family:inherit;">＋ 商品を追加</button>
       </div>
@@ -6081,7 +6093,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-03 13:24';
+const APP_BUILD = '2026-11-04 16:05';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -7120,10 +7132,40 @@ function renderResult(data) {
     ul.appendChild(li);
   });
 
+  _syncScanSplitUI();
   document.getElementById('result-preview').style.display = 'block';
 
   // 表示・編集のたびにカウントダウンを仕切り直す
   scheduleAutoSave();
+}
+
+// ===== スキャン結果の割り勘 =====
+// parsedData に split_enabled / split_count を持たせ、保存時にそのまま記録する（詳細画面の割り勘と同じ）
+function toggleScanSplit() {
+  if (!parsedData) return;
+  parsedData.split_enabled = !parsedData.split_enabled;
+  parsedData.split_count = Math.max(2, parseInt(parsedData.split_count, 10) || 2);
+  _syncScanSplitUI();
+  scheduleAutoSave(); // 編集扱いでカウントし直す
+}
+function changeScanSplitCount(delta) {
+  if (!parsedData) return;
+  parsedData.split_count = Math.max(2, (parseInt(parsedData.split_count, 10) || 2) + delta);
+  _syncScanSplitUI();
+  scheduleAutoSave();
+}
+function _syncScanSplitUI() {
+  const t = document.getElementById('split-toggle-scan');
+  if (!t) return;
+  const on = !!(parsedData && parsedData.split_enabled);
+  const count = (parsedData && parsedData.split_count) || 2;
+  t.classList.toggle('on', on);
+  document.getElementById('split-count-wrap-scan').classList.toggle('hidden', !on);
+  document.getElementById('split-count-val-scan').textContent = count;
+  // 1人あたりの負担額（合計 ÷ 人数、切り上げ。effectiveTotal と同じ計算）
+  document.getElementById('scan-split-share').textContent = on
+    ? `1人 ¥${effectiveTotal(parsedData).toLocaleString()}`
+    : '';
 }
 
 // ===== 自動保存（解析結果を一定時間さわらなければ保存） =====
