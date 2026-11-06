@@ -6093,7 +6093,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-04 16:05';
+const APP_BUILD = '2026-11-06 15:16';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6269,24 +6269,56 @@ const BACKUP_COUNT_LIMIT = 20; // 前回バックアップからこれ以上増�
 const BANNER_SNOOZE_KEY  = 'data_safety_banner_snoozed_at';
 const BANNER_SNOOZE_DAYS = 7;  // 「閉じる」を押してから再表示しない日数
 
+// 最終バックアップはユーザーごとに { ユーザー名: { at, count } } で持つ。
+// localStorage が消える環境（content:// 等）でも残るよう、設定用IDBにも保存して起動時に復元する。
+// BACKUP_AT_KEY / BACKUP_COUNT_KEY は旧形式（全ユーザー共通）で、新形式に記録がないときだけ参照する。
+const BACKUP_INFO_KEY = 'backup_info_by_user';
+
+function _loadBackupMap(raw) {
+  try {
+    const m = JSON.parse(raw);
+    return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
+  } catch (e) { return {}; }
+}
+
+// 2つの記録をユーザーごとに比べ、新しいほうを残す（IDB復元時に使う）
+function mergeBackupMaps(a, b) {
+  const out = Object.assign({}, a);
+  Object.keys(b).forEach(u => {
+    const x = out[u], y = b[u];
+    const tx = x ? new Date(x.at).getTime() : NaN;
+    const ty = y ? new Date(y.at).getTime() : NaN;
+    if (isNaN(tx) || (!isNaN(ty) && ty > tx)) out[u] = y;
+  });
+  return out;
+}
+
 // エクスポート／共有が成功したタイミングで呼ぶ
 function markBackupDone(count) {
+  const user = getCurrentUser() || '';
   try {
-    localStorage.setItem(BACKUP_AT_KEY, new Date().toISOString());
-    localStorage.setItem(BACKUP_COUNT_KEY, String(count));
+    const map = _loadBackupMap(localStorage.getItem(BACKUP_INFO_KEY));
+    map[user] = { at: new Date().toISOString(), count };
+    const json = JSON.stringify(map);
+    localStorage.setItem(BACKUP_INFO_KEY, json);
+    _saveSettingIDB(BACKUP_INFO_KEY, json);
   } catch (e) {}
   updateDataSafetyBanner();
+  renderEnvCheck();
 }
 
 function getBackupInfo() {
   let at = null, count = null;
   try {
-    const raw = localStorage.getItem(BACKUP_AT_KEY);
-    if (raw) { const d = new Date(raw); if (!isNaN(d)) at = d; }
-    const c = parseInt(localStorage.getItem(BACKUP_COUNT_KEY), 10);
+    const entry = _loadBackupMap(localStorage.getItem(BACKUP_INFO_KEY))[getCurrentUser() || ''];
+    const rawAt = entry ? entry.at : localStorage.getItem(BACKUP_AT_KEY);
+    const rawCount = entry ? entry.count : localStorage.getItem(BACKUP_COUNT_KEY);
+    if (rawAt) { const d = new Date(rawAt); if (!isNaN(d)) at = d; }
+    const c = parseInt(rawCount, 10);
     if (!isNaN(c)) count = c;
   } catch (e) {}
-  const days = at ? Math.floor((Date.now() - at.getTime()) / 86400000) : null;
+  // 端末の時計が巻き戻っても負の日数にしない
+  const days = at ? Math.max(0, Math.floor((Date.now() - at.getTime()) / 86400000)) : null;
   return { at, count, days };
 }
 
@@ -11689,11 +11721,12 @@ async function initApp(isResume) {
       _loadSettingIDB('gemini_api_key'),
       _loadSettingIDB(PREFS_KEY),
       _loadSettingIDB(API_KEY_SKIP_KEY),
+      _loadSettingIDB(BACKUP_INFO_KEY),
     ]);
     const timeout = new Promise(res => setTimeout(() => res(null), 5000));
     const restored = await Promise.race([restore, timeout]);
     if (restored) {
-      const [idbUser, idbUsers, idbTheme, idbKey, idbPrefs, idbKeySkip] = restored;
+      const [idbUser, idbUsers, idbTheme, idbKey, idbPrefs, idbKeySkip, idbBackup] = restored;
       // IDBに値があれば常にlocalStorageへ同期（localStorageが古くても上書き）
       if (idbUser)  localStorage.setItem(CURRENT_USER_KEY, idbUser);
       if (idbUsers) localStorage.setItem(USERS_KEY, idbUsers);
@@ -11701,6 +11734,13 @@ async function initApp(isResume) {
       if (idbKey)   localStorage.setItem('gemini_api_key', idbKey);
       if (idbKeySkip) localStorage.setItem(API_KEY_SKIP_KEY, idbKeySkip);
       if (idbPrefs) { localStorage.setItem(PREFS_KEY, idbPrefs); _prefs = null; }
+      // バックアップ記録は上書きせず、ユーザーごとに新しいほうを採用する
+      if (idbBackup) {
+        const merged = JSON.stringify(mergeBackupMaps(
+          _loadBackupMap(localStorage.getItem(BACKUP_INFO_KEY)), _loadBackupMap(idbBackup)));
+        localStorage.setItem(BACKUP_INFO_KEY, merged);
+        if (merged !== idbBackup) _saveSettingIDB(BACKUP_INFO_KEY, merged);
+      }
     } else {
       console.warn('IDB設定の復元がタイムアウトしました（localStorageの値で続行）');
     }
