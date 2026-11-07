@@ -6093,7 +6093,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-06 15:16';
+const APP_BUILD = '2026-11-07 12:50';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6938,13 +6938,17 @@ small_category（小カテゴリ）: 居酒屋メニューレベルの一般名�
   "date": "YYYY-MM-DD",
   "time": "HH:MM",
   "total": 合計金額(数値),
+  "tax_type": "外税" または "内税"（判別できなければ null）,
+  "tax_lines": [ { "rate": 税率(8 または 10), "tax": その税率の税額(数値) } ],
   "items": [
     {
       "name": "商品名（レシートの表記を省略せず正確に。黒・白・塩・糖などの修飾語も含めること）",
       "middle_category": "中カテゴリ",
       "small_category": "小カテゴリ",
       "quantity": 個数(整数。レシートに「2個」「×2」「2点」「@150×2」等の記載があればその数、なければ1),
-      "price": 税込金額(数値、その商品行の合計金額＝単価×個数。レシートに印字されている行の金額をそのまま。税抜表示レシートの場合は税込換算した金額)
+      "unit_price": 単価(数値。「2コX単198」「@150×2」等の単価の記載があればその単価、なければ null),
+      "tax_rate": 税率(軽減税率マーク「※」「＊」「軽」等が付いた商品や8%対象の商品は 8、それ以外の10%対象は 10、判別できなければ null),
+      "price": 金額(数値、その商品行の合計金額＝単価×個数。レシートに印字されている行の金額を一字一句そのまま読む。税抜表示（外税）でも税込に換算・加算しないこと。税はアプリ側で tax_lines から配分する)
     }
   ]
 }
@@ -6964,6 +6968,10 @@ ${knownStoreBrandsPromptText()}
 - dateが読み取れない場合は今日の日付
 - timeはレシートに購入時刻が記載されている場合のみHH:MM形式で入れる。読み取れない場合はnull
 - 合計金額は税・割引をすべて反映した実際の支払い金額（税込み合計）。小計ではなく、レシートに「合計」「お買上金額」「お支払い金額」として印字されている金額
+- 「合計」の後に「ポイント値引」「クーポン」などが続き「差引合計」「お支払い」等が印字されている場合は、その最終的な支払い額（差引合計）を total にする
+- tax_type：商品の金額が税抜で、小計の後に「10%税額」「外税」「消費税」などの税額が加算されて合計になっている（小計＋税額＝合計）なら "外税"。商品の金額が税込で「内消費税」「(内税)」等と表示されているなら "内税"
+- tax_lines：外税のとき、小計の直後〜「合計」の直前に印字された税率別の税額（例：「10%税額 ¥39」→ {"rate":10,"tax":39}）を入れる。ポイント値引などの後に「税率別の税額は以下を参照」等として再計算された税額欄は使わないこと。内税・不明のときは []
+- 単価と個数の記載がある行は、price が 単価×個数 と一致するか必ず検算すること（例：「2コX単198」→ price は 396）
 - 商品名は絶対に省略・短縮しないこと
 - 同じ商品を複数個買った行は1つの item にまとめ、quantity に個数、price に行の合計金額を入れる（単価を price にしない）。個数・単価の補足行（例：「2個 × 単150」）は独立した item にしない
 - 会員情報・税額明細・ポイント付与（獲得ポイント・ポイント残高）・「合計」「お会計」等の合計行はitemsに含めない
@@ -6972,7 +6980,7 @@ ${knownStoreBrandsPromptText()}
 - 値引・クーポンの item の middle_category / small_category は、特定の商品に対する割引ならその商品と同じカテゴリ、レシート全体に対する割引なら price が最も大きい商品と同じカテゴリにする
 - ポイント利用（ポイント支払い・ポイント充当）の item は収入として扱う：middle_category は "${INCOME_POINT_CAT}"、small_category は ""、"entry_type": "income" を付け、price はマイナスのまま
 - ほかにも収入にあたる行（キャッシュバックなど）は、収入カテゴリ（${[...incomeCategoryNames()].map(c => `"${c}"`).join('、')}）から選んで middle_category に入れ、"entry_type": "income" を付けて price はマイナスにする。収入カテゴリは通常の商品には使わない
-- items の price をすべて足した値が total（実際の支払い金額）と一致するようにする`;
+- 内税レシートでは items の price をすべて足した値が total（実際の支払い金額）と一致するようにする。外税レシートでは items の price の合計＋tax_lines の税額合計が total と一致する`;
 
     const _geminiUrl1 = `https://generativelanguage.googleapis.com/v1beta/models/${getGeminiModel()}:generateContent?key=${apiKey}`;
     const _geminiBody1 = JSON.stringify({
@@ -7025,6 +7033,8 @@ ${prompt}`
     parsedData = JSON.parse(clean);
     stripTotalRowFromItems(parsedData);
     _normalizeScannedIncomeItems(parsedData);
+    // 外税（税抜表示）レシートの税額を商品に配分し、単価×個数の読み違いを直す
+    const _taxFix = reconcileReceiptTax(parsedData);
     // 店ブランドの表記ゆれを登録済みの表記に揃える（例：welcia → ウエルシア）。店名でないものは null
     parsedData.store = (parsedData.store && String(parsedData.store).trim() && !isNonStoreName(parsedData.store)) ? String(parsedData.store).trim() : null;
     parsedData.store_brand = cleanStoreBrand(parsedData.store_brand);
@@ -7042,7 +7052,7 @@ ${prompt}`
     }
 
     renderResult(parsedData);
-    showStatus('success', '解析完了！内容を確認して保存してください。');
+    showStatus('success', '解析完了！' + (_taxFix ? _taxFix + '。' : '') + '内容を確認して保存してください。');
     // 解析完了音（Web Audio API）
     try {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -7121,6 +7131,98 @@ function stripTotalRowFromItems(data) {
     data.items = kept;
     data.total = matchedPrice;
   }
+}
+
+// ===== 外税（税抜表示）レシートの補正 =====
+// Gemini には印字どおりの（税抜の）金額と税率別の税額だけを読ませ、計算はアプリ側で行う。
+// 1. 単価×個数 が price と食い違っていて、直すと合計と整合するなら price を直す（例：2コX単198 → 398 と誤読）
+// 2. total − items合計 の差（＝外税額）を、税率ごとに支出の商品へ按分して税込金額にする
+// 戻り値：補正内容の説明（補正なしは null）
+function reconcileReceiptTax(data) {
+  if (!data || !Array.isArray(data.items) || data.items.length === 0) return null;
+  const num = v => {
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    if (typeof v === 'string') {
+      const t = v.replace(/[,，¥￥円\s]/g, '');
+      return (t !== '' && isFinite(+t)) ? +t : null;
+    }
+    return null;
+  };
+  const names = incomeCategoryNames();
+  const isInc = it => it.entry_type === 'income' || names.has(it.middle_category);
+  const items = data.items;
+  items.forEach(it => { const p = num(it.price); it.price = p === null ? 0 : Math.round(p); });
+  const sumPrices = () => items.reduce((s, i) => s + (i.price || 0), 0);
+
+  const total = num(data.total);
+  const taxLines = (Array.isArray(data.tax_lines) ? data.tax_lines : [])
+    .map(t => ({ rate: num(t && t.rate), tax: num(t && t.tax) }))
+    .filter(t => t.tax !== null && t.tax > 0);
+  const taxSum = taxLines.reduce((s, t) => s + t.tax, 0);
+  const external = data.tax_type === '外税' && taxSum > 0;
+  const notes = [];
+
+  // 1. 単価×個数の検算（合計と整合する直し方が1つだけ見つかったときに限り適用）
+  if (total !== null) {
+    const diff = sumPrices() - (total - (external ? taxSum : 0));
+    if (diff !== 0) {
+      const cands = items.filter(it => {
+        const u = num(it.unit_price), q = parseInt(it.quantity, 10) || 1;
+        return !isInc(it) && u !== null && u > 0 && it.price - u * q === diff;
+      });
+      if (cands.length === 1) {
+        const it = cands[0];
+        const fixed = num(it.unit_price) * (parseInt(it.quantity, 10) || 1);
+        notes.push(`「${it.name}」を¥${it.price.toLocaleString()}→¥${fixed.toLocaleString()}に修正`);
+        it.price = fixed;
+      }
+    }
+  }
+
+  // 2. 外税の按分
+  let delta = total !== null ? total - sumPrices() : 0;
+  const targets = items.filter(it => !isInc(it) && it.price > 0);
+  const base = targets.reduce((s, it) => s + it.price, 0);
+  // 外税と明示されている、または差額が読み取った税額と一致するときだけ。差額が税率の範囲を超えるなら読み漏れとみなして触らない
+  const looksTax = external || (taxSum > 0 && Math.abs(delta - taxSum) <= 1);
+  if (delta > 0 && base > 0 && looksTax && delta <= Math.ceil(base * 0.1) + targets.length + 1) {
+    // 按分（最大剰余法で合計をぴったり delta にする）
+    const allocate = (list, amount, weightOf) => {
+      const ws = list.map(weightOf);
+      const wsum = ws.reduce((s, w) => s + w, 0);
+      if (wsum <= 0) return;
+      const raw = ws.map(w => amount * w / wsum);
+      const floor = raw.map(Math.floor);
+      let rest = amount - floor.reduce((s, v) => s + v, 0);
+      raw.map((v, i) => [v - floor[i], i]).sort((a, b) => b[0] - a[0])
+        .forEach(([, i]) => { if (rest > 0) { floor[i]++; rest--; } });
+      list.forEach((it, i) => { it.price += floor[i]; });
+    };
+    const rateOf = it => { const r = num(it.tax_rate); return (r === 8 || r === 10) ? r : null; };
+    const lineRates = [...new Set(taxLines.map(t => t.rate).filter(r => r === 8 || r === 10))];
+    let done = false;
+    // 税率別の税額が読めていて、商品の税率も全部分かるなら、税率ごとにその税額を配る
+    if (lineRates.length >= 2 && taxSum === delta && targets.every(it => lineRates.includes(rateOf(it)))) {
+      const groups = lineRates.map(r => ({
+        list: targets.filter(it => rateOf(it) === r),
+        tax: taxLines.filter(t => t.rate === r).reduce((s, t) => s + t.tax, 0),
+      }));
+      if (groups.every(g => g.list.length > 0)) {
+        groups.forEach(g => allocate(g.list, g.tax, it => it.price));
+        done = true;
+      }
+    }
+    // それ以外は金額×税率の比で配る（税率不明は10%扱い）
+    if (!done) allocate(targets, delta, it => it.price * (rateOf(it) || 10));
+    data.external_tax = delta;
+    notes.push(`外税¥${delta.toLocaleString()}を商品に含めました`);
+  }
+
+  // 解析用の一時項目は保存しない
+  delete data.tax_type;
+  delete data.tax_lines;
+  items.forEach(it => { delete it.unit_price; delete it.tax_rate; });
+  return notes.length ? notes.join('、') : null;
 }
 
 function renderResult(data) {
