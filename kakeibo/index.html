@@ -742,17 +742,12 @@
     margin-bottom: 8px;
     display: none;
   }
-  /* 支出／収入でレシートカードを淡く色分け（検索の強調はこの後ろの定義が優先） */
-  .history-item.entry-expense {
-    background: linear-gradient(rgba(255,140,120,0.045), rgba(255,140,120,0.045)), var(--surface);
-    border-color: rgba(255,140,120,0.16);
-  }
+  /* 収入のレシートカードだけ淡く色分け（支出は通常のカードのまま。検索の強調はこの後ろの定義が優先） */
   .history-item.entry-income {
     background: linear-gradient(rgba(90,200,250,0.06), rgba(90,200,250,0.06)), var(--surface);
     border-color: rgba(90,200,250,0.22);
   }
   .history-item.entry-mixed { box-shadow: inset 3px 0 0 rgba(90,200,250,0.35); }
-  body.theme-light .history-item.entry-expense { background: #fbf4f1; border-color: #efdcd5; }
   body.theme-light .history-item.entry-income  { background: #eff6f9; border-color: #d3e6ef; }
   body.theme-light .history-item.entry-mixed   { box-shadow: inset 3px 0 0 #a9d3e6; }
   .history-item-highlight {
@@ -6093,7 +6088,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-07 12:50';
+const APP_BUILD = '2026-11-10 16:02';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
