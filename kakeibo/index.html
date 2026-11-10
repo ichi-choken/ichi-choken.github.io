@@ -402,6 +402,8 @@
     border: 1px solid var(--border);
     margin-top: 8px;
   }
+  /* 意見フォームへのリンク（<a> をボタンと同じ見た目にする） */
+  a.feedback-link { display: block; box-sizing: border-box; text-align: center; text-decoration: none; }
 
   /* アップロードゾーン */
   .upload-zone {
@@ -2789,6 +2791,10 @@
     </label>
 
     <button class="btn btn-secondary" onclick="resetPrefs()">動作設定を初期値に戻す</button>
+
+    <div class="modal-label" style="margin-top:16px;">ご意見・不具合報告</div>
+    <div style="font-size:12px; line-height:1.6; margin-bottom:8px; color:var(--text-dim);">バグや改善してほしい点など、どんな内容でもお気軽にお送りください（匿名・Googleフォームが開きます）。</div>
+    <a class="btn btn-secondary feedback-link" href="https://forms.gle/epGvMj1cXzyCU6THA" target="_blank" rel="noopener noreferrer">💬 ご意見・不具合を報告する ↗</a>
 
     <div class="modal-label" style="margin-top:16px;">バージョン</div>
     <div id="version-info" style="font-size:12px; margin-bottom:8px; color:var(--text-dim);">確認中...</div>
@@ -6161,7 +6167,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-10 16:11';
+const APP_BUILD = '2026-11-10 16:36';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
