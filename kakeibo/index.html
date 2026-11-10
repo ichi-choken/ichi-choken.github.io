@@ -6088,7 +6088,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-10 16:02';
+const APP_BUILD = '2026-11-10 16:06';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6711,6 +6711,8 @@ function saveGeminiModel() {
 
 // ===== タブ切り替え =====
 function switchTab(name) {
+  // タブを切り替えたら再カテゴライズの✅表示はリセットし、丸い再カテゴライズアイコンに戻す
+  recatShownDoneIds.clear();
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', ['upload','history','stats'][i] === name);
   });
@@ -7907,7 +7909,7 @@ async function loadHistory() {
       `;
       // 再カテゴライズボタン：addEventListener で確実にstopPropagation
       const recatBtn = li.querySelector('.recat-btn');
-      if (recatDoneIds.has(r.id)) recatBtn.textContent = '✅';
+      if (recatShownDoneIds.has(r.id)) recatBtn.textContent = '✅';
       recatBtn.addEventListener('click', e => {
         e.stopPropagation();
         recategorizeReceipt(r.id, recatBtn);
@@ -8227,7 +8229,7 @@ function showCalDayPanel(dateStr, records, opts = {}) {
     const recatBtn = document.createElement('button');
     recatBtn.className = 'recat-btn';
     recatBtn.title = '再カテゴライズ';
-    recatBtn.innerHTML = recatDoneIds.has(r.id) ? '✅' : recatIconHtml();
+    recatBtn.innerHTML = recatShownDoneIds.has(r.id) ? '✅' : recatIconHtml();
     recatBtn.addEventListener('click', e => {
       e.stopPropagation();
       recategorizeReceipt(r.id, recatBtn);
@@ -12158,7 +12160,8 @@ function recatIconHtml() {
 }
 const RECAT_MAX_CONCURRENT = 5;
 let recatActiveCount = 0;
-const recatDoneIds = new Set(); // 再カテゴライズ完了済みID（ページリロードまで保持）
+const recatDoneIds = new Set(); // 再カテゴライズ完了済みID（ページリロードまで保持。手入力の自動カテゴライズの成否判定に使う）
+const recatShownDoneIds = new Set(); // ✅表示中のID（タブを切り替えたら消して、丸い再カテゴライズアイコンに戻す）
 
 // opts.onlyIndices: 指定 index の商品だけを分類・更新する（手入力の自動カテゴライズ用）
 // opts.largeHint:   大カテゴリ名。指定時はその配下の中カテゴリを優先させる
@@ -12413,10 +12416,18 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
     }
 
     recatDoneIds.add(id);
+    recatShownDoneIds.add(id);
 
-    // 履歴一覧が表示中なら再描画してstore_brandバッジを即時反映
+    // 押されたボタン（統計一覧・カレンダー等）は必ず完了表示にする
+    btn.classList.remove('spinning');
+    btn.textContent = '✅';
+
+    // 履歴タブの一覧を実際に開いているときだけ再描画してstore_brandバッジを即時反映
+    // （タブが非表示でも history-list-view 自体の display は 'none' にならないため、タブの active も見る）
+    const historyTab = document.getElementById('tab-history');
     const historyListView = document.getElementById('history-list-view');
-    if (historyListView && historyListView.style.display !== 'none') {
+    if (historyTab && historyTab.classList.contains('active')
+        && historyListView && historyListView.style.display !== 'none') {
       // 再描画前にスクロール位置を保存
       const scrollY = window.scrollY;
       await loadHistory();
@@ -12428,9 +12439,6 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
         newBtn.classList.remove('spinning');
         newBtn.textContent = '✅';
       }
-    } else {
-      btn.classList.remove('spinning');
-      btn.textContent = '✅';
     }
 
   } catch(e) {
