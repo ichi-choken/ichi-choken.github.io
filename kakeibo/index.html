@@ -4900,6 +4900,7 @@ function initIncomeCatDragDrop(container) {
   if (container._incomeDnDInit) return;
   container._incomeDnDInit = true;
   let dragging = null, ghost = null, offsetX = 0, offsetY = 0, lastTarget = null, didMove = false;
+  const autoScroll = createDragAutoScroll({ isDragging: () => !!dragging, onScroll: (x, y) => { if (dragging && ghost) updateIndicator(getRowUnder(x, y)); } });
 
   function getRows() { return [...container.querySelectorAll('.income-cat-row')]; }
 
@@ -4919,6 +4920,7 @@ function initIncomeCatDragDrop(container) {
     ghost.style.cssText += ';position:fixed;pointer-events:none;opacity:0.8;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.5);transition:none;border-radius:8px;width:' + rect.width + 'px;';
     document.body.appendChild(ghost);
     moveGhost(cx, cy);
+    autoScroll.start(row, cx, cy);
     row.style.opacity = '0.35';
     row.style.outline = '2px dashed var(--accent)';
   }
@@ -4949,6 +4951,7 @@ function initIncomeCatDragDrop(container) {
   }
 
   function drop(cx, cy) {
+    autoScroll.stop();
     const target = getRowUnder(cx, cy);
     const before = (target && ghost) ? insertBeforeTarget(target) : false;
     if (ghost) { ghost.remove(); ghost = null; }
@@ -4973,6 +4976,7 @@ function initIncomeCatDragDrop(container) {
     if (!dragging) return;
     didMove = true;
     moveGhost(e.clientX, e.clientY);
+    autoScroll.move(e.clientX, e.clientY);
     updateIndicator(getRowUnder(e.clientX, e.clientY));
   });
   document.addEventListener('mouseup', e => { if (dragging) drop(e.clientX, e.clientY); });
@@ -5002,6 +5006,7 @@ function initIncomeCatDragDrop(container) {
     didMove = true;
     const t = e.touches[0];
     moveGhost(t.clientX, t.clientY);
+    autoScroll.move(t.clientX, t.clientY);
     updateIndicator(getRowUnder(t.clientX, t.clientY));
     e.preventDefault();
   }, { passive: false });
@@ -5013,6 +5018,7 @@ function initIncomeCatDragDrop(container) {
   });
   container.addEventListener('touchcancel', () => {
     if (!dragging) return;
+    autoScroll.stop();
     if (ghost) { ghost.remove(); ghost = null; }
     if (lastTarget) { lastTarget.style.borderTop = ''; lastTarget.style.borderBottom = '1px solid var(--border)'; lastTarget = null; }
     dragging.style.opacity = ''; dragging.style.outline = '';
@@ -5426,6 +5432,63 @@ function createMidTag(midId, lIdx) {
   return tag;
 }
 
+// ===== ドラッグ中の自動スクロール（カテゴリ編集の並べ替え用） =====
+// 指やカーソルがスクロール領域（エディタのモーダル、なければ画面全体）の上下端に近づくと、その方向へ自動でスクロールする。
+// スクロールで下のカードが動いたときは onScroll(x, y) を呼ぶので、挿入位置の表示を更新すること
+function createDragAutoScroll({ isDragging, onScroll }) {
+  const EDGE = 70;      // 端からこの距離(px)に入ったらスクロールを始める
+  const MAX_SPEED = 20; // 1フレームあたりの最大スクロール量(px)。端に近いほど速くなる
+  let raf = 0, x = 0, y = 0, scrollers = [];
+
+  function canScrollEl(el) {
+    const oy = getComputedStyle(el).overflowY;
+    return (oy === 'auto' || oy === 'scroll' || oy === 'overlay') && el.scrollHeight > el.clientHeight + 1;
+  }
+  // 近い順にスクロールできる祖先を集める（端まで行ったら外側を動かすため）
+  function collectScrollers(el) {
+    const list = [];
+    for (let p = el && el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+      if (canScrollEl(p)) list.push(p);
+    }
+    // ページ全体（モーダル表示中で body が overflow:hidden のときは動かさない）
+    const bodyOy = getComputedStyle(document.body).overflowY;
+    const htmlOy = getComputedStyle(document.documentElement).overflowY;
+    if (bodyOy !== 'hidden' && htmlOy !== 'hidden') list.push(document.scrollingElement || document.documentElement);
+    return list;
+  }
+  function speedFor(top, bottom) {
+    let v = 0;
+    if (y < top + EDGE) v = -MAX_SPEED * Math.min(1, (top + EDGE - y) / EDGE);
+    else if (y > bottom - EDGE) v = MAX_SPEED * Math.min(1, (y - (bottom - EDGE)) / EDGE);
+    if (!v) return 0;
+    return Math.sign(v) * Math.max(1, Math.round(Math.abs(v)));
+  }
+  function tick() {
+    raf = 0;
+    if (!isDragging()) { scrollers = []; return; }
+    for (const sc of scrollers) {
+      const isPage = sc === document.scrollingElement || sc === document.documentElement;
+      let top = 0, bottom = window.innerHeight;
+      if (!isPage) {
+        const r = sc.getBoundingClientRect();
+        top = Math.max(0, r.top);
+        bottom = Math.min(window.innerHeight, r.bottom);
+      }
+      const dy = speedFor(top, bottom);
+      if (!dy) continue;
+      const before = sc.scrollTop;
+      sc.scrollTop = before + dy;
+      if (sc.scrollTop !== before) { onScroll(x, y); break; }
+    }
+    raf = requestAnimationFrame(tick);
+  }
+  return {
+    start(el, cx, cy) { x = cx; y = cy; scrollers = collectScrollers(el); if (!raf) raf = requestAnimationFrame(tick); },
+    move(cx, cy) { x = cx; y = cy; },
+    stop() { if (raf) cancelAnimationFrame(raf); raf = 0; scrollers = []; },
+  };
+}
+
 // ===== 中カテゴリ ドラッグ＆ドロップ（大中エディタ用、PC mouse + スマホ touch 対応） =====
 // ===== 大カテゴリ 縦並びドラッグ＆ドロップ =====
 function initLargeDragDrop(container) {
@@ -5435,6 +5498,7 @@ function initLargeDragDrop(container) {
   if (container._largeDnDInit) return;
   container._largeDnDInit = true;
   let dragging = null, ghost = null, offsetX = 0, offsetY = 0, lastTarget = null, didMove = false;
+  const autoScroll = createDragAutoScroll({ isDragging: () => !!dragging, onScroll: (x, y) => { if (dragging && ghost) updateIndicator(getCardUnder(x, y)); } });
 
   function getCards() { return [...container.querySelectorAll('.large-card')]; }
 
@@ -5454,6 +5518,7 @@ function initLargeDragDrop(container) {
     ghost.style.cssText += ';position:fixed;pointer-events:none;opacity:0.7;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.5);transition:none;width:' + rect.width + 'px;';
     document.body.appendChild(ghost);
     moveGhost(cx, cy);
+    autoScroll.start(card, cx, cy);
     card.style.opacity = '0.35';
     card.style.outline = '2px dashed var(--accent)';
   }
@@ -5479,6 +5544,7 @@ function initLargeDragDrop(container) {
   }
 
   function drop(cx, cy) {
+    autoScroll.stop();
     if (ghost) { ghost.remove(); ghost = null; }
     if (lastTarget) { lastTarget.style.borderTop = ''; lastTarget.style.borderBottom = ''; lastTarget = null; }
     if (dragging) { dragging.style.opacity = ''; dragging.style.outline = ''; }
@@ -5504,6 +5570,7 @@ function initLargeDragDrop(container) {
     if (!dragging) return;
     didMove = true;
     moveGhost(e.clientX, e.clientY);
+    autoScroll.move(e.clientX, e.clientY);
     updateIndicator(getCardUnder(e.clientX, e.clientY));
   }
   function onMouseUp(e) { if (!dragging) return; drop(e.clientX, e.clientY); }
@@ -5536,6 +5603,7 @@ function initLargeDragDrop(container) {
     didMove = true;
     const t = e.touches[0];
     moveGhost(t.clientX, t.clientY);
+    autoScroll.move(t.clientX, t.clientY);
     updateIndicator(getCardUnder(t.clientX, t.clientY));
     e.preventDefault();
   }
@@ -5551,6 +5619,7 @@ function initLargeDragDrop(container) {
 // ===== 中カテゴリ 縦並びドラッグ＆ドロップ（大カテゴリ内） =====
 function initMidCardDragDrop(midSection, lIdx) {
   let dragging = null, ghost = null, offsetX = 0, offsetY = 0, lastTarget = null, didMove = false;
+  const autoScroll = createDragAutoScroll({ isDragging: () => !!dragging, onScroll: (x, y) => { if (dragging && ghost) updateIndicator(getCardUnder(x, y)); } });
 
   function getCards() { return [...midSection.querySelectorAll('.mid-card')]; }
 
@@ -5570,6 +5639,7 @@ function initMidCardDragDrop(midSection, lIdx) {
     ghost.style.cssText += ';position:fixed;pointer-events:none;opacity:0.7;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:none;width:' + rect.width + 'px;';
     document.body.appendChild(ghost);
     moveGhost(cx, cy);
+    autoScroll.start(card, cx, cy);
     card.style.opacity = '0.35';
     card.style.outline = '2px dashed var(--accent)';
   }
@@ -5595,6 +5665,7 @@ function initMidCardDragDrop(midSection, lIdx) {
   }
 
   function drop(cx, cy) {
+    autoScroll.stop();
     if (ghost) { ghost.remove(); ghost = null; }
     if (lastTarget) { lastTarget.style.borderTop = ''; lastTarget.style.borderBottom = ''; lastTarget = null; }
     if (dragging) { dragging.style.opacity = ''; dragging.style.outline = ''; }
@@ -5620,6 +5691,7 @@ function initMidCardDragDrop(midSection, lIdx) {
     if (!dragging) return;
     didMove = true;
     moveGhost(e.clientX, e.clientY);
+    autoScroll.move(e.clientX, e.clientY);
     updateIndicator(getCardUnder(e.clientX, e.clientY));
   }
   function onMouseUp(e) { if (!dragging) return; drop(e.clientX, e.clientY); }
@@ -5652,6 +5724,7 @@ function initMidCardDragDrop(midSection, lIdx) {
     didMove = true;
     const t = e.touches[0];
     moveGhost(t.clientX, t.clientY);
+    autoScroll.move(t.clientX, t.clientY);
     updateIndicator(getCardUnder(t.clientX, t.clientY));
     e.preventDefault();
   }
@@ -6088,7 +6161,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-10 16:06';
+const APP_BUILD = '2026-11-10 16:11';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -12611,6 +12684,7 @@ function initSmallDragDrop(listEl, mIdx) {
   let ghost = null;          // 半透明クローン
   let offsetX = 0, offsetY = 0;
   let lastTarget = null;
+  const autoScroll = createDragAutoScroll({ isDragging: () => !!dragging, onScroll: (x, y) => { if (dragging && ghost) updateDropIndicator(getTagUnder(x, y, listEl)); } });
 
   // ---- MOUSE ----
   listEl.addEventListener('mousedown', e => {
@@ -12629,6 +12703,7 @@ function initSmallDragDrop(listEl, mIdx) {
   function onMouseMove(e) {
     if (!dragging) return;
     moveGhost(e.clientX, e.clientY);
+    autoScroll.move(e.clientX, e.clientY);
     const target = getTagUnder(e.clientX, e.clientY, listEl);
     updateDropIndicator(target);
   }
@@ -12654,6 +12729,7 @@ function initSmallDragDrop(listEl, mIdx) {
     if (!dragging) return;
     const t = e.touches[0];
     moveGhost(t.clientX, t.clientY);
+    autoScroll.move(t.clientX, t.clientY);
     const target = getTagUnder(t.clientX, t.clientY, listEl);
     updateDropIndicator(target);
     e.preventDefault();
@@ -12679,6 +12755,7 @@ function initSmallDragDrop(listEl, mIdx) {
     ghost.style.width = rect.width + 'px';
     document.body.appendChild(ghost);
     moveGhost(cx, cy);
+    autoScroll.start(tag, cx, cy);
 
     // 元タグを薄く
     tag.style.opacity = '0.35';
@@ -12720,6 +12797,7 @@ function initSmallDragDrop(listEl, mIdx) {
   }
 
   function drop(cx, cy, list, midxLocal) {
+    autoScroll.stop();
     // クリーンアップ
     if (ghost) { ghost.remove(); ghost = null; }
     if (lastTarget) {
