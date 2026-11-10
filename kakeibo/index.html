@@ -6167,7 +6167,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-10 16:42';
+const APP_BUILD = '2026-11-10 16:50';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6973,6 +6973,7 @@ async function analyzeReceipt() {
   document.getElementById('analyze-btn').disabled = true;
   document.getElementById('result-preview').style.display = 'none';
 
+  const _apiGen = apiWorkBegin();
   try {
     // 画像パーツ構築（通常 or 分割）
     // fileToBase64 内で縮小圧縮済み。mime_type は常に image/jpeg。
@@ -7096,6 +7097,7 @@ ${prompt}`
     }
 
     const data = await res.json();
+    if (isApiWorkCancelled(_apiGen)) throw makeApiAbortError();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const clean = text.replace(/```json|```/g, '').trim();
     parsedData = JSON.parse(clean);
@@ -7140,8 +7142,13 @@ ${prompt}`
     } catch(e) {}
 
   } catch (err) {
-    showStatus('error', toJapaneseGeminiError(err));
     document.getElementById('analyze-btn').disabled = false;
+    if (isApiAbortError(err)) {
+      // リロード・アプリへの復帰などで中断したときはエラー音を鳴らさない
+      showStatus('error', '解析を中断しました（ページの再読み込み・アプリの切り替えなど）。もう一度お試しください。');
+      return;
+    }
+    showStatus('error', toJapaneseGeminiError(err));
     // エラー音（下降・不協和）
     try {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -7159,6 +7166,8 @@ ${prompt}`
         osc.stop(now + offset + 0.3);
       });
     } catch(e) {}
+  } finally {
+    apiWorkEnd();
   }
 }
 
@@ -8353,15 +8362,23 @@ async function calDayBulkRecat(records, bulkBtn) {
   bulkBtn.disabled = true;
   bulkBtn.textContent = `⏳ 0/${targets.length}`;
 
+  const _apiGen = apiWorkBegin();
   let done = 0;
   for (const r of targets) {
+    if (isApiWorkCancelled(_apiGen)) break; // リロード・アプリ復帰などで中断
     const dummyBtn = document.createElement('button');
     dummyBtn.textContent = '🔄';
     await recategorizeReceipt(r.id, dummyBtn).catch(() => {});
     done++;
     bulkBtn.textContent = `⏳ ${done}/${targets.length}`;
   }
+  apiWorkEnd();
 
+  if (isApiWorkCancelled(_apiGen)) {
+    bulkBtn.textContent = `中断（${done}/${targets.length}）`;
+    bulkBtn.disabled = false;
+    return;
+  }
   bulkBtn.textContent = `✅ 完了`;
   bulkBtn.disabled = false;
   // カレンダー再描画
@@ -9249,10 +9266,45 @@ function nextGeminiDailyResetLabel() {
   }
 }
 
+// ===== API処理の中断（リロード・ページを離れる・アプリへ戻ったとき） =====
+// 中断するとGeminiへの通信と再試行の待ち時間を打ち切り、途中まで進んだ結果は保存しない
+let _apiAbortCtl = new AbortController();
+let _apiGeneration = 0; // 中断のたびに増える。処理開始時の値と違っていたら中断されたとみなす
+let _apiBusyCount = 0;  // 実行中のAPI処理（解析・再カテゴライズ・一括処理）の数
+function apiWorkBegin() { _apiBusyCount++; return _apiGeneration; }
+function apiWorkEnd() { _apiBusyCount = Math.max(0, _apiBusyCount - 1); }
+function isApiWorkBusy() { return _apiBusyCount > 0; }
+function isApiWorkCancelled(gen) { return gen !== _apiGeneration; }
+function makeApiAbortError() {
+  const e = new Error('ページの再読み込みなどのため、処理を中断しました');
+  e.name = 'AbortError';
+  e.cancelled = true;
+  return e;
+}
+function isApiAbortError(e) { return !!(e && (e.cancelled || e.name === 'AbortError')); }
+// 実行中の処理があれば中断して true を返す
+function abortAllApiWork() {
+  if (!isApiWorkBusy()) return false;
+  _apiGeneration++;
+  try { _apiAbortCtl.abort(); } catch (_) {}
+  _apiAbortCtl = new AbortController();
+  return true;
+}
+// 処理中にリロード・タブを閉じようとしたら確認を出す（引っ張って更新などの誤操作を防ぐ）
+window.addEventListener('beforeunload', e => {
+  if (!isApiWorkBusy()) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+// 実際にページを離れる（リロードを含む）ときは中断し、途中の結果を書き込まない
+window.addEventListener('pagehide', () => { abortAllApiWork(); });
+
 async function callGeminiWithRetry(url, fetchOptions, opts = {}) {
   const maxRetries  = opts.maxRetries  ?? 5;
   const baseDelayMs = opts.baseDelayMs ?? 1000;
   const onRetry     = opts.onRetry     ?? null;
+  const signal      = _apiAbortCtl.signal; // 呼び出し時点の中断信号（中断後の新しい処理には影響しない）
+  if (signal.aborted) throw makeApiAbortError();
 
   // リトライ対象とするHTTPステータス
   const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -9260,7 +9312,7 @@ async function callGeminiWithRetry(url, fetchOptions, opts = {}) {
   let lastError;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const res = await fetch(url, fetchOptions);
+      const res = await fetch(url, { ...fetchOptions, signal });
 
       // 成功 or リトライ不要なエラー（400, 401, 403 など）はそのまま返す
       if (res.ok || !RETRYABLE_STATUS.has(res.status)) {
@@ -9272,6 +9324,8 @@ async function callGeminiWithRetry(url, fetchOptions, opts = {}) {
       lastError = buildGeminiHttpError(res.status, errBody);
 
     } catch (networkErr) {
+      // 中断されたときはリトライしない
+      if (signal.aborted || isApiAbortError(networkErr)) throw makeApiAbortError();
       // ネットワーク障害もリトライ対象
       lastError = networkErr;
     }
@@ -9290,7 +9344,11 @@ async function callGeminiWithRetry(url, fetchOptions, opts = {}) {
     }
     const reason = lastError?.status === 429 ? 'quota' : 'busy';
     if (onRetry) onRetry(attempt + 1, delayMs, reason);
-    await new Promise(resolve => setTimeout(resolve, delayMs));
+    // 待機中に中断されたらすぐに抜ける
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(resolve, delayMs);
+      signal.addEventListener('abort', () => { clearTimeout(t); reject(makeApiAbortError()); }, { once: true });
+    });
   }
 
   throw lastError;
@@ -12047,6 +12105,8 @@ document.getElementById('file-input').addEventListener('click', showUserToast);
 // アプリをバックグラウンドから復帰したとき（タブ切り替え・スリープ解除など）
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible') {
+    // 画面を読み込み直すので、実行中のカテゴライズ・解析は中断する
+    abortAllApiWork();
     await initApp(true);
   }
 });
@@ -12054,6 +12114,7 @@ document.addEventListener('visibilitychange', async () => {
 // bfcache（戻るボタンなど）からの復帰
 window.addEventListener('pageshow', async (e) => {
   if (e.persisted) {
+    abortAllApiWork();
     await initApp(true);
   }
 });
@@ -12270,16 +12331,19 @@ async function recategorizeReceipt(id, btn, opts = {}) {
   }
 
   recatActiveCount++;
+  const _apiGen = apiWorkBegin();
+  let _retryTimer = null;
   btn.classList.remove('error');
   btn.title = '再カテゴライズ';
   delete btn.dataset.errorMsg;
+  delete btn.dataset.cancelled;
   btn.classList.add('spinning');
   btn.innerHTML = recatIconHtml();
 
   try {
     const all = await dbGetAll('receipts');
     const record = all.find(r => r.id === id);
-    if (!record || !record.items?.length) { btn.classList.remove('spinning'); recatActiveCount--; return; }
+    if (!record || !record.items?.length) { btn.classList.remove('spinning'); return; }
 
     // 中カテゴリ名一覧・小カテゴリマップを作成（検証用）
     const midNames = categoryDef.map(m => m.middle);
@@ -12327,7 +12391,7 @@ async function recategorizeReceipt(id, btn, opts = {}) {
       ? opts.onlyIndices.filter(i => record.items[i])
       : record.items.map((_, i) => i)
     ).filter(i => !itemIsIncome(record, record.items[i], _incNames));
-    if (targetIdx.length === 0) { btn.classList.remove('spinning'); recatActiveCount--; return; }
+    if (targetIdx.length === 0) { btn.classList.remove('spinning'); return; }
     const itemLines = targetIdx.map(i => `${i}: ${record.items[i].name || '（名称なし）'}`).join('\n');
     const store = record.store || '';
 
@@ -12392,7 +12456,6 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
 
     // リトライ中はボタンに残り時間を表示する
     const _origBtnText = btn.textContent;
-    let _retryTimer = null;
 
     const res = await callGeminiWithRetry(
       _geminiUrl2,
@@ -12430,6 +12493,8 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
     }
 
     const data = await res.json();
+    // 応答待ちの間に中断されていたら、レシートには書き込まない
+    if (isApiWorkCancelled(_apiGen)) throw makeApiAbortError();
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
@@ -12513,7 +12578,15 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
     }
 
   } catch(e) {
+    if (_retryTimer) { clearInterval(_retryTimer); _retryTimer = null; }
     btn.classList.remove('spinning');
+    if (isApiAbortError(e)) {
+      // 中断：エラー扱いにせず、最初の再カテゴライズアイコンに戻す
+      btn.innerHTML = recatIconHtml();
+      btn.title = '再カテゴライズ（中断しました）';
+      btn.dataset.cancelled = '1';
+      return;
+    }
     btn.textContent = '❌';
     btn.classList.add('error');
     const errMsg = `再カテゴライズ失敗：${toJapaneseGeminiError(e)}`;
@@ -12522,6 +12595,7 @@ JSONのみ返してください（説明文・マークダウン・コードブ�
     console.error('再カテゴライズエラー:', e);
   } finally {
     recatActiveCount--;
+    apiWorkEnd();
   }
 }
 
@@ -12558,9 +12632,11 @@ async function bulkRecatStatsList() {
   btn.disabled = true;
   btn.style.fontSize = '13px';
 
+  const _apiGen = apiWorkBegin();
   let done = 0;
   btn.textContent = `0/${targets.length}`;
   for (const t of targets) {
+    if (isApiWorkCancelled(_apiGen)) break; // リロード・アプリ復帰などで中断
     const id = Number(t.dataset.rid);
     if (!Number.isFinite(id)) { done++; continue; }
     t.classList.remove('error');
@@ -12569,9 +12645,10 @@ async function bulkRecatStatsList() {
     done++;
     btn.textContent = `${done}/${targets.length}`;
   }
+  apiWorkEnd();
 
-  btn.textContent = '\u2705';
-  btn.style.fontSize = '17px';
+  btn.textContent = isApiWorkCancelled(_apiGen) ? '中断' : '\u2705';
+  btn.style.fontSize = isApiWorkCancelled(_apiGen) ? '12px' : '17px';
   setTimeout(() => {
     delete btn.dataset.busy;
     _updateStatsListRecatBtn();
@@ -12621,10 +12698,11 @@ async function startBulkRecategorize() {
   label.textContent = `0 / ${total} 件完了`;
   fill.style.width = '0%';
 
+  const _apiGen = apiWorkBegin();
   // 5件ずつ並列処理（RECAT_MAX_CONCURRENTを活用）
   const CHUNK = RECAT_MAX_CONCURRENT;
   for (let i = 0; i < ids.length; i += CHUNK) {
-    if (_bulkRecatCancelled) break;
+    if (_bulkRecatCancelled || isApiWorkCancelled(_apiGen)) break;
 
     const chunk = ids.slice(i, i + CHUNK);
 
@@ -12634,6 +12712,7 @@ async function startBulkRecategorize() {
       const dummyBtn = document.createElement('button');
       dummyBtn.textContent = '🔄';
       return recategorizeReceipt(id, dummyBtn).then(() => {
+        if (dummyBtn.dataset.cancelled) return; // 中断されたものは完了に数えない
         done++;
         label.textContent = `${done} / ${total} 件完了${errCount ? `（エラー ${errCount} 件）` : ''}`;
         fill.style.width = `${Math.round(done / total * 100)}%`;
@@ -12646,8 +12725,9 @@ async function startBulkRecategorize() {
     }));
   }
 
+  apiWorkEnd();
   // 完了
-  const cancelled = _bulkRecatCancelled;
+  const cancelled = _bulkRecatCancelled || isApiWorkCancelled(_apiGen);
   _bulkRecatCancelled = false;
 
   if (cancelled) {
@@ -13984,6 +14064,10 @@ async function autoCategorizeManualItems(id, indices, largeHint) {
     await new Promise(r => setTimeout(r, 1500));
   }
   await recategorizeReceipt(id, dummyBtn, { onlyIndices: indices, largeHint, skipStoreBrand: true });
+  if (dummyBtn.dataset.cancelled) {
+    showManualStatus('error', '自動カテゴライズを中断しました（履歴の🔄で再試行できます）');
+    return;
+  }
   if (dummyBtn.classList.contains('error')) {
     showManualStatus('error', `自動カテゴライズに失敗しました（履歴の🔄で再試行できます）`);
     playAutoCatFailChime();
