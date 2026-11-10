@@ -6167,7 +6167,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-10 16:36';
+const APP_BUILD = '2026-11-10 16:42';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -6416,13 +6416,6 @@ function snoozeDataSafetyBanner() {
   renderEnvCheck();
 }
 
-// 非表示期間を手動で解除する（設定画面から）
-function resetDataSafetyBannerSnooze() {
-  try { localStorage.removeItem(BANNER_SNOOZE_KEY); } catch (e) {}
-  renderEnvCheck();
-  updateDataSafetyBanner();
-}
-
 // 「永続化されているか」と「バックアップが古くないか」を確認してバナーを出す
 async function updateDataSafetyBanner() {
   const el = document.getElementById('data-safety-banner');
@@ -6508,8 +6501,7 @@ async function renderEnvCheck() {
 
   if (isDataSafetyBannerSnoozed()) {
     rows.push('<span style="color:var(--text-dim);">警告バナーは非表示中（閉じるを押してから'
-      + `${BANNER_SNOOZE_DAYS}日間）`
-      + ' <a href="#" onclick="resetDataSafetyBannerSnooze(); return false;" style="color:var(--accent);">今すぐ再表示</a></span>');
+      + `${BANNER_SNOOZE_DAYS}日間）</span>`);
   }
 
   el.innerHTML = rows.map(r => `<div style="padding:3px 0;">${r}</div>`).join('');
