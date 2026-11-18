@@ -914,6 +914,10 @@
     flex-shrink: 0;
   }
   .item-edit-btn:hover { color: var(--accent); }
+  /* 外税の「税」行（表示専用・編集不可） */
+  .tax-row .detail-item-name, .tax-row .item-name { color: var(--text-dim); }
+  .tax-row-spacer { visibility: hidden; cursor: default; }
+  .tax-row-spacer::before { content: '✏️'; }
 
   /* 編集モーダル */
   .modal-label { margin-top: 12px; }
@@ -6167,7 +6171,7 @@ function updateUploadLabelByPref() {
 // APP_BUILD はこのファイルを更新するたびに書き換える。
 // サーバー上の最新版をキャッシュ無しで取得し、この値を比べることで
 // 「今見ているのが最新版か、キャッシュの古い版か」を判別する。
-const APP_BUILD = '2026-11-10 16:50';
+const APP_BUILD = '2026-11-18 22:10';
 
 // '2026-09-03 22:30' → '2026年9月3日\n22:30更新'
 function formatBuildLabel(build) {
@@ -7213,7 +7217,7 @@ function stripTotalRowFromItems(data) {
 // ===== 外税（税抜表示）レシートの補正 =====
 // Gemini には印字どおりの（税抜の）金額と税率別の税額だけを読ませ、計算はアプリ側で行う。
 // 1. 単価×個数 が price と食い違っていて、直すと合計と整合するなら price を直す（例：2コX単198 → 398 と誤読）
-// 2. total − items合計 の差（＝外税額）を、税率ごとに支出の商品へ按分して税込金額にする
+// 2. total − items合計 の差（＝外税額）を external_tax として記録する（商品の金額は税抜のまま）
 // 戻り値：補正内容の説明（補正なしは null）
 function reconcileReceiptTax(data) {
   if (!data || !Array.isArray(data.items) || data.items.length === 0) return null;
@@ -7256,43 +7260,16 @@ function reconcileReceiptTax(data) {
     }
   }
 
-  // 2. 外税の按分
-  let delta = total !== null ? total - sumPrices() : 0;
+  // 2. 外税：商品は印字どおりの税抜金額のまま保存し、合計（税込）との差を外税として記録する
+  //    （画面では「税」の行として見せ、集計では receiptTaxShares で商品へ按分する）
+  const delta = total !== null ? total - sumPrices() : 0;
   const targets = items.filter(it => !isInc(it) && it.price > 0);
   const base = targets.reduce((s, it) => s + it.price, 0);
-  // 外税と明示されている、または差額が読み取った税額と一致するときだけ。差額が税率の範囲を超えるなら読み漏れとみなして触らない
+  // 外税と明示されている、または差額が読み取った税額と一致するときだけ。差額が税率の範囲を超えるなら読み漏れとみなす
   const looksTax = external || (taxSum > 0 && Math.abs(delta - taxSum) <= 1);
   if (delta > 0 && base > 0 && looksTax && delta <= Math.ceil(base * 0.1) + targets.length + 1) {
-    // 按分（最大剰余法で合計をぴったり delta にする）
-    const allocate = (list, amount, weightOf) => {
-      const ws = list.map(weightOf);
-      const wsum = ws.reduce((s, w) => s + w, 0);
-      if (wsum <= 0) return;
-      const raw = ws.map(w => amount * w / wsum);
-      const floor = raw.map(Math.floor);
-      let rest = amount - floor.reduce((s, v) => s + v, 0);
-      raw.map((v, i) => [v - floor[i], i]).sort((a, b) => b[0] - a[0])
-        .forEach(([, i]) => { if (rest > 0) { floor[i]++; rest--; } });
-      list.forEach((it, i) => { it.price += floor[i]; });
-    };
-    const rateOf = it => { const r = num(it.tax_rate); return (r === 8 || r === 10) ? r : null; };
-    const lineRates = [...new Set(taxLines.map(t => t.rate).filter(r => r === 8 || r === 10))];
-    let done = false;
-    // 税率別の税額が読めていて、商品の税率も全部分かるなら、税率ごとにその税額を配る
-    if (lineRates.length >= 2 && taxSum === delta && targets.every(it => lineRates.includes(rateOf(it)))) {
-      const groups = lineRates.map(r => ({
-        list: targets.filter(it => rateOf(it) === r),
-        tax: taxLines.filter(t => t.rate === r).reduce((s, t) => s + t.tax, 0),
-      }));
-      if (groups.every(g => g.list.length > 0)) {
-        groups.forEach(g => allocate(g.list, g.tax, it => it.price));
-        done = true;
-      }
-    }
-    // それ以外は金額×税率の比で配る（税率不明は10%扱い）
-    if (!done) allocate(targets, delta, it => it.price * (rateOf(it) || 10));
     data.external_tax = delta;
-    notes.push(`外税¥${delta.toLocaleString()}を商品に含めました`);
+    notes.push(`外税¥${delta.toLocaleString()}を「税」として計上しました`);
   }
 
   // 解析用の一時項目は保存しない
@@ -7342,6 +7319,19 @@ function renderResult(data) {
     li.addEventListener('click', () => openPreviewItemEdit(idx));
     ul.appendChild(li);
   });
+  // 外税（税抜表示）レシートは「税」を表示専用の行で見せる
+  const _tax = receiptTaxInfo(data);
+  if (_tax.diff) {
+    const li = document.createElement('li');
+    li.className = 'item-row tax-row';
+    li.innerHTML = `
+      <span class="item-name">${_tax.isTax ? '税' : '差額'}</span>
+      <span class="item-cat">${_tax.isTax ? '外税（商品の金額は税抜）' : '合計と商品の合計の差'}</span>
+      <span class="item-price">¥${_tax.diff.toLocaleString()}</span>
+      <span class="item-edit-btn tax-row-spacer"></span>
+    `;
+    ul.appendChild(li);
+  }
 
   _syncScanSplitUI();
   document.getElementById('result-preview').style.display = 'block';
@@ -8423,7 +8413,65 @@ function unitPriceHtml(item) {
 // 支出は割引・ポイント利用などのマイナス商品を符号のまま差し引く
 function _statItemAmount(r, item) {
   const p = (item && item.price) || 0;
-  return (r && r.entry_type === 'income') ? Math.abs(p) : p;
+  if (r && r.entry_type === 'income') return Math.abs(p);
+  return p + (receiptTaxShares(r).get(item) || 0);
+}
+
+// ===== 外税（税抜表示レシート）の「税」 =====
+// 商品は税抜で保存し、合計（税込）− 商品合計 の差を「税」とみなす。
+// isTax：差額が税として妥当な範囲（商品合計の約10%以内）か。範囲外は商品の登録漏れなどの「差額」として扱う
+function receiptTaxInfo(r) {
+  const items = (r && r.items) || [];
+  const sum = items.reduce((s, i) => s + (i.price || 0), 0);
+  const diff = (r && r.entry_type !== 'income' && r.total && r.total > sum) ? r.total - sum : 0;
+  if (!diff) return { diff: 0, isTax: false, targets: [], base: 0 };
+  const names = incomeCategoryNames();
+  const targets = items.filter(it => !itemIsIncome(r, it, names) && (it.price || 0) > 0);
+  const base = targets.reduce((s, it) => s + it.price, 0);
+  const isTax = base > 0 && diff <= Math.ceil(base * 0.1) + targets.length + 1;
+  return { diff, isTax, targets, base };
+}
+
+// 集計用：「税」を支出の商品へ金額比で按分した Map(item → 税額)。税として妥当でない差額は配らない
+const _taxShareCache = new WeakMap();
+function receiptTaxShares(r) {
+  if (!r || !r.items) return new Map();
+  const sum = r.items.reduce((s, i) => s + (i.price || 0), 0);
+  const key = `${r.total}|${sum}|${r.items.length}|${r.entry_type}`;
+  const cached = _taxShareCache.get(r);
+  if (cached && cached.key === key) return cached.map;
+  const map = new Map();
+  const { diff, isTax, targets, base } = receiptTaxInfo(r);
+  if (isTax) targets.forEach(it => map.set(it, diff * it.price / base));
+  _taxShareCache.set(r, { key, map });
+  return map;
+}
+
+// 商品の編集・削除で合計を計算し直すとき、元の「税」（合計 − 商品合計）を保つ
+function receiptExtraOf(r) {
+  const sum = ((r && r.items) || []).reduce((s, i) => s + (i.price || 0), 0);
+  return (r && r.total && r.total > sum) ? r.total - sum : 0;
+}
+
+// 詳細・解析結果に出す表示専用の「税」行
+function taxRowHtml(r, splitOn, splitCount) {
+  const { diff, isTax } = receiptTaxInfo(r);
+  if (!diff) return '';
+  const label = isTax ? '税' : '差額';
+  const sub = isTax ? '外税（商品の金額は税抜）' : '合計と商品の合計の差（商品の登録漏れなど）';
+  const splitHtml = splitOn
+    ? `<div class="detail-item-split">÷${splitCount} = ¥${Math.ceil(diff / splitCount).toLocaleString()}</div>` : '';
+  return `<div class="detail-item-row tax-row">
+      <div class="detail-item-left">
+        <div class="detail-item-name">${label}</div>
+        <span class="detail-item-cat">${sub}</span>
+      </div>
+      <div class="detail-item-price-block">
+        <div class="detail-item-price">¥${diff.toLocaleString()}</div>
+        ${splitHtml}
+      </div>
+      <span class="item-edit-btn tax-row-spacer"></span>
+    </div>`;
 }
 
 // 割り勘考慮の実質負担合計を返す
@@ -8580,6 +8628,8 @@ function _renderDetail() {
     `;
     container.appendChild(div);
   });
+  // 外税（税抜表示）レシートは「税」を表示専用の行で見せる
+  container.insertAdjacentHTML('beforeend', taxRowHtml(r, splitOn, splitCount));
 }
 
 // 割り勘バーのUI状態をcurrentRecordに合わせて同期
@@ -8941,6 +8991,8 @@ async function saveItemEdit() {
   const isIncome = !isPreview && !!currentRecord && currentRecord.entry_type === 'income';
   // 支出レシートでも、収入カテゴリ（ポイントなど）を選んだ商品は収入として同じレシートに入れる
   const itemIncome = !isIncome && incomeCategoryNames().has(newMid);
+  // 外税（合計 − 商品合計）は商品を直しても保つ
+  const _keepExtra = receiptExtraOf(isPreview ? parsedData : currentRecord);
 
   if (isPreview) {
     let item;
@@ -8964,7 +9016,7 @@ async function saveItemEdit() {
       parsedData.items.push(item);
     }
     normalizeItemEntryType(item, itemIncome);
-    parsedData.total = parsedData.items.reduce((s, i) => s + (i.price || 0), 0);
+    parsedData.total = parsedData.items.reduce((s, i) => s + (i.price || 0), 0) + _keepExtra;
     closeModal('item-edit-modal');
     renderResult(parsedData);
   } else {
@@ -8978,7 +9030,7 @@ async function saveItemEdit() {
     item.manually_categorized = true;
     // 支出レシート内の商品：収入カテゴリなら収入（金額はマイナス）、それ以外は支出
     if (!isIncome) normalizeItemEntryType(item, itemIncome);
-    currentRecord.total = currentRecord.items.reduce((s, i) => s + (i.price || 0), 0);
+    currentRecord.total = currentRecord.items.reduce((s, i) => s + (i.price || 0), 0) + _keepExtra;
     await dbPut('receipts', currentRecord);
     closeModal('item-edit-modal');
     _renderDetail();
@@ -8992,14 +9044,16 @@ async function deleteCurrentItem() {
 
   if (isPreview) {
     if (previewEditItemIndex !== null) {
+      const _keepExtra = receiptExtraOf(parsedData);
       parsedData.items.splice(previewEditItemIndex, 1);
-      parsedData.total = parsedData.items.reduce((s, i) => s + (i.price || 0), 0);
+      parsedData.total = parsedData.items.reduce((s, i) => s + (i.price || 0), 0) + _keepExtra;
     }
     closeModal('item-edit-modal');
     renderResult(parsedData);
   } else {
+    const _keepExtra = receiptExtraOf(currentRecord);
     currentRecord.items.splice(currentItemIndex, 1);
-    currentRecord.total = currentRecord.items.reduce((s, i) => s + (i.price || 0), 0);
+    currentRecord.total = currentRecord.items.reduce((s, i) => s + (i.price || 0), 0) + _keepExtra;
     await dbPut('receipts', currentRecord);
     closeModal('item-edit-modal');
     _renderDetail();
